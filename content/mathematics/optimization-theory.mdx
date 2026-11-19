@@ -7,11 +7,13 @@ description: "Convex vs non-convex landscapes, gradient descent variants, and co
 
 ## Why Optimization?
 
-Training a neural network means solving: `min_θ L(θ)` over possibly billions of parameters. This is an optimization problem. Understanding the landscape — where the minima are, what saddle points do, why learning rate matters — is what separates practitioners who debug training from those who just rerun the same script hoping for a different result.
+Training a neural network means solving $\min_\theta L(\theta)$ over possibly billions of parameters. This is an optimization problem. Understanding the landscape — where the minima are, what saddle points do, why learning rate matters — is what separates practitioners who debug training from those who just rerun the same script hoping for a different result.
 
 ## Convex vs Non-Convex Optimization
 
-A function is **convex** if the line segment between any two points on its graph lies above or on the graph: `f(λx + (1-λ)y) ≤ λf(x) + (1-λ)f(y)`.
+A function is **convex** if the line segment between any two points on its graph lies above or on the graph:
+
+$$f(\lambda x + (1-\lambda)y) \le \lambda f(x) + (1-\lambda)f(y)$$
 
 Convex problems are tractable — any local minimum is a global minimum. Linear regression with MSE loss is convex; gradient descent is guaranteed to converge.
 
@@ -22,9 +24,9 @@ Deep neural networks create **non-convex** loss surfaces. This seems dangerous �
 
 ## Critical Points: Minima, Maxima, Saddle Points
 
-At a critical point, `∇L(θ) = 0`. What kind of critical point it is depends on the **Hessian** `H = ∇²L`:
-- All eigenvalues of H > 0: **local minimum** (bowl shape)
-- All eigenvalues of H < 0: **local maximum**
+At a critical point, $\nabla L(\theta) = 0$. What kind of critical point it is depends on the **Hessian** $H = \nabla^2 L$:
+- All eigenvalues of $H > 0$: **local minimum** (bowl shape)
+- All eigenvalues of $H < 0$: **local maximum**
 - Mixed signs: **saddle point** — gradient vanishes but it's neither min nor max
 
 In high dimensions, random critical points are almost always saddle points. Gradient descent with noise (SGD) tends to escape saddle points via perturbation.
@@ -32,31 +34,33 @@ In high dimensions, random critical points are almost always saddle points. Grad
 ## Gradient Descent and Variants
 
 **Vanilla gradient descent** (batch GD): update on the full dataset:
-`θ ← θ - η·∇L(θ)`
+
+$$\theta \leftarrow \theta - \eta \cdot \nabla L(\theta)$$
 
 **Stochastic gradient descent (SGD)**: update on one sample at a time. Noisy but faster per step; noise helps escape saddle points.
 
-**Mini-batch SGD**: update on batches of size B. Standard in modern DL — balances gradient quality and step frequency.
+**Mini-batch SGD**: update on batches of size $B$. Standard in modern DL — balances gradient quality and step frequency.
 
 **Momentum**: accumulates velocity to smooth past gradients:
-`v ← βv + ∇L;   θ ← θ - η·v`
+
+$$v \leftarrow \beta v + \nabla L; \qquad \theta \leftarrow \theta - \eta \cdot v$$
 
 **Adam**: adaptive per-parameter learning rates using first and second moment estimates. Dominant in modern deep learning; converges fast but can generalize worse than SGD on some tasks.
 
 ## Learning Rate Effects
 
-The learning rate η is the most important hyperparameter:
+The learning rate $\eta$ is the most important hyperparameter:
 - **Too large**: loss oscillates or diverges (steps overshoot the minimum)
 - **Too small**: painfully slow convergence; can get stuck in flat regions
-- **Schedules**: cosine annealing, warmup + decay, cyclic LR — all strategies to get the benefits of large η early and small η late
+- **Schedules**: cosine annealing, warmup + decay, cyclic LR — all strategies to get the benefits of large $\eta$ early and small $\eta$ late
 
-The **loss landscape curvature** (Hessian eigenvalues) determines the optimal learning rate. High-curvature directions need small η; flat directions can use large η. Adaptive optimizers (Adam, RMSProp) attempt to handle this automatically.
+The **loss landscape curvature** (Hessian eigenvalues) determines the optimal learning rate. High-curvature directions need small $\eta$; flat directions can use large $\eta$. Adaptive optimizers (Adam, RMSProp) attempt to handle this automatically.
 
 ## Convergence Conditions
 
-For convex smooth functions, GD with learning rate `η ≤ 1/L` (where L is the Lipschitz constant of the gradient) converges at rate `O(1/t)`. For strongly convex functions: exponential convergence `O(ρᵗ)` where `ρ < 1`.
+For convex smooth functions, GD with learning rate $\eta \le 1/L$ (where $L$ is the Lipschitz constant of the gradient) converges at rate $O(1/t)$. For strongly convex functions: exponential convergence $O(\rho^t)$ where $\rho < 1$.
 
-For non-convex functions: convergence to a **stationary point** (not guaranteed global minimum) at rate `O(1/√t)` for SGD.
+For non-convex functions: convergence to a **stationary point** (not guaranteed global minimum) at rate $O(1/\sqrt{t})$ for SGD.
 
 <NeuronDiagram animate />
 
@@ -95,13 +99,13 @@ for lr in [0.001, 0.05, 0.12]:
     l, final = run_gd(lr)
     print(f"  lr={lr:.3f}: final loss={l[-1]:.6f}, theta={np.round(final,3)}")
 
-print("\\n=== SGD with Momentum (lr=0.05, beta=0.9) ===")
+print("\n=== SGD with Momentum (lr=0.05, beta=0.9) ===")
 l_mom, final_mom = run_sgd_momentum(0.05)
 print(f"  final loss={l_mom[-1]:.6f}, theta={np.round(final_mom,3)}")
 
 # Show how loss decreases over steps
 gd_losses, _ = run_gd(0.05)
-print(f"\\n=== Convergence curve (lr=0.05) ===")
+print(f"\n=== Convergence curve (lr=0.05) ===")
 for step in [0, 10, 50, 100, 199]:
     print(f"  step {step:>3}: L = {gd_losses[step]:.6f}")
 ```

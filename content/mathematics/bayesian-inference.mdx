@@ -7,22 +7,22 @@ description: "Prior, likelihood, posterior — and how Bayes theorem provides pr
 
 ## Why Bayesian Inference?
 
-Standard ML gives you a point estimate: "the best weights are W*." Bayesian inference gives you a *distribution over weights*: "here's how confident we are about the weights." This distinction matters enormously in safety-critical applications. A self-driving car should not just predict "stop sign" — it should know *how certain* it is. Bayesian methods provide the machinery for principled uncertainty quantification.
+Standard ML gives you a point estimate: "the best weights are $W^*$." Bayesian inference gives you a *distribution over weights*: "here's how confident we are about the weights." This distinction matters enormously in safety-critical applications. A self-driving car should not just predict "stop sign" — it should know *how certain* it is. Bayesian methods provide the machinery for principled uncertainty quantification.
 
 ## Bayes Theorem in Depth
 
-`P(θ | D) = P(D | θ) · P(θ) / P(D)`
+$$P(\theta \mid D) = \frac{P(D \mid \theta) \cdot P(\theta)}{P(D)}$$
 
 Each term has a precise role:
 
 | Term | Name | Role |
 |------|------|------|
-| `P(θ | D)` | Posterior | Belief about θ after seeing data D |
-| `P(D | θ)` | Likelihood | How well θ explains the data |
-| `P(θ)` | Prior | Belief about θ before any data |
-| `P(D)` | Evidence (marginal) | Normalizing constant: `∫ P(D|θ)P(θ) dθ` |
+| $P(\theta \mid D)$ | Posterior | Belief about $\theta$ after seeing data $D$ |
+| $P(D \mid \theta)$ | Likelihood | How well $\theta$ explains the data |
+| $P(\theta)$ | Prior | Belief about $\theta$ before any data |
+| $P(D)$ | Evidence (marginal) | Normalizing constant: $\int P(D\mid\theta)P(\theta)\,d\theta$ |
 
-The evidence `P(D)` is often intractable — it requires integrating over all possible parameter values. This is the central challenge of Bayesian inference and motivates approximate methods.
+The evidence $P(D)$ is often intractable — it requires integrating over all possible parameter values. This is the central challenge of Bayesian inference and motivates approximate methods.
 
 ## Sequential Updating
 
@@ -33,11 +33,11 @@ Bayesian inference is naturally sequential. Start with a prior, observe data, co
 A **conjugate prior** is one where the posterior has the same functional form as the prior. This avoids intractable integrals.
 
 The classic example: **Beta-Binomial conjugacy**.
-- Prior: `θ ~ Beta(α, β)`
-- Likelihood: `k heads in n flips ~ Binomial(n, θ)`
-- Posterior: `θ | data ~ Beta(α + k, β + n - k)`
+- Prior: $\theta \sim \text{Beta}(\alpha, \beta)$
+- Likelihood: $k$ heads in $n$ flips $\sim \text{Binomial}(n, \theta)$
+- Posterior: $\theta \mid \text{data} \sim \text{Beta}(\alpha + k,\ \beta + n - k)$
 
-The Beta distribution is parameterized by pseudocounts: α is "prior heads", β is "prior tails". Observing real data just increments these counts. No integration needed.
+The Beta distribution is parameterized by pseudocounts: $\alpha$ is "prior heads", $\beta$ is "prior tails". Observing real data just increments these counts. No integration needed.
 
 Other key conjugate pairs used in ML:
 - Gaussian prior + Gaussian likelihood → Gaussian posterior (Bayesian linear regression)
@@ -47,18 +47,18 @@ Other key conjugate pairs used in ML:
 
 For complex models (deep networks, hierarchical models), there's no closed-form posterior. **Markov Chain Monte Carlo (MCMC)** methods sample from the posterior by constructing a Markov chain that has the posterior as its stationary distribution.
 
-The key idea: even if you can't integrate `P(D|θ)P(θ)`, you can *evaluate* it pointwise. MCMC uses these evaluations to propose and accept/reject steps, gradually exploring regions of high posterior probability.
+The key idea: even if you can't integrate $P(D|\theta)P(\theta)$, you can *evaluate* it pointwise. MCMC uses these evaluations to propose and accept/reject steps, gradually exploring regions of high posterior probability.
 
 Practical variants: Metropolis-Hastings, Hamiltonian Monte Carlo (HMC), No-U-Turn Sampler (NUTS) — used in Stan and PyMC.
 
 ## Bayesian Neural Networks
 
-A **Bayesian Neural Network (BNN)** places a prior over all weights and infers a posterior `P(W | D)`. Predictions are made by integrating over the weight posterior — model averaging over infinitely many networks.
+A **Bayesian Neural Network (BNN)** places a prior over all weights and infers a posterior $P(W \mid D)$. Predictions are made by integrating over the weight posterior — model averaging over infinitely many networks.
 
 In practice: exact inference is intractable for large nets. Approximations include:
-- **Variational inference**: approximate posterior `q(W) ≈ P(W|D)` by minimizing `KL(q||P(W|D))`
+- **Variational inference**: approximate posterior $q(W) \approx P(W|D)$ by minimizing $KL(q \,\|\, P(W|D))$
 - **MC Dropout**: treat dropout as approximate Bayesian inference; run multiple stochastic forward passes at test time
-- **Deep Ensembles**: train N networks from different initializations; empirically rivals full Bayesian inference
+- **Deep Ensembles**: train $N$ networks from different initializations; empirically rivals full Bayesian inference
 
 ## Uncertainty Quantification
 
@@ -111,7 +111,7 @@ for n in [1, 5, 10, 20, 50]:
     print(f"{n:>10} | {heads:>6} | {post_mean:>14.3f} | [{lo:.2f}, {hi:.2f}]")
 
 # MC Dropout: epistemic uncertainty demo
-print("\\n=== MC Dropout Uncertainty (simulated) ===")
+print("\n=== MC Dropout Uncertainty (simulated) ===")
 # Simulate 20 stochastic forward passes
 true_logit = 1.5   # confident prediction
 n_passes = 20

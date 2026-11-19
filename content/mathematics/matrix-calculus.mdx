@@ -7,61 +7,61 @@ description: "Derivatives of matrix expressions — the actual math behind compu
 
 ## Why Matrix Calculus?
 
-Scalar calculus gives you `d/dx f(x)`. Neural networks work with matrices and vectors — weights W, activations a, losses L. When you compute the gradient `∂L/∂W`, you're doing matrix calculus. Understanding it means you can derive backpropagation from first principles, debug gradient explosions, and implement custom layers correctly.
+Scalar calculus gives you $\frac{d}{dx} f(x)$. Neural networks work with matrices and vectors — weights $W$, activations $\mathbf{a}$, losses $L$. When you compute the gradient $\frac{\partial L}{\partial W}$, you're doing matrix calculus. Understanding it means you can derive backpropagation from first principles, debug gradient explosions, and implement custom layers correctly.
 
 ## The Layout Convention
 
-Before anything, fix your convention: when differentiating a scalar `f` with respect to a column vector `x ∈ ℝⁿ`, the gradient `∂f/∂x` is a column vector of the same shape as `x`. This is the **denominator layout** (also called Jacobian layout). NumPy and PyTorch use this convention.
+Before anything, fix your convention: when differentiating a scalar $f$ with respect to a column vector $\mathbf{x} \in \mathbb{R}^n$, the gradient $\frac{\partial f}{\partial \mathbf{x}}$ is a column vector of the same shape as $\mathbf{x}$. This is the **denominator layout** (also called Jacobian layout). NumPy and PyTorch use this convention.
 
 ## Derivative of a Linear Form
 
-The simplest case: `f(x) = wᵀx` (dot product, a scalar).
+The simplest case: $f(\mathbf{x}) = \mathbf{w}^\top \mathbf{x}$ (dot product, a scalar).
 
-`∂(wᵀx)/∂x = w`
+$$\frac{\partial (\mathbf{w}^\top \mathbf{x})}{\partial \mathbf{x}} = \mathbf{w}$$
 
-Intuition: `wᵀx = Σ wᵢxᵢ`. The partial with respect to `xᵢ` is `wᵢ`. Stack them into a vector: you get `w`.
+Intuition: $\mathbf{w}^\top \mathbf{x} = \sum_i w_i x_i$. The partial with respect to $x_i$ is $w_i$. Stack them into a vector: you get $\mathbf{w}$.
 
 ## Derivative of a Matrix-Vector Product
 
-For `y = Wx` where `W ∈ ℝᵐˣⁿ`, `x ∈ ℝⁿ`, `y ∈ ℝᵐ`:
+For $\mathbf{y} = W\mathbf{x}$ where $W \in \mathbb{R}^{m \times n}$, $\mathbf{x} \in \mathbb{R}^n$, $\mathbf{y} \in \mathbb{R}^m$:
 
-`∂y/∂x = W`   (Jacobian: m × n matrix)
+$$\frac{\partial \mathbf{y}}{\partial \mathbf{x}} = W \qquad \text{(Jacobian: } m \times n \text{ matrix)}$$
 
-If we have a scalar loss `L = f(y)` and use the chain rule:
+If we have a scalar loss $L = f(\mathbf{y})$ and use the chain rule:
 
-`∂L/∂x = Wᵀ · (∂L/∂y)`
+$$\frac{\partial L}{\partial \mathbf{x}} = W^\top \cdot \frac{\partial L}{\partial \mathbf{y}}$$
 
-This is exactly why the backward pass through a linear layer multiplies the upstream gradient by `Wᵀ`.
+This is exactly why the backward pass through a linear layer multiplies the upstream gradient by $W^\top$.
 
 ## Gradient with Respect to the Weight Matrix
 
-For `y = Wx`, the gradient of a scalar loss `L` with respect to `W`:
+For $\mathbf{y} = W\mathbf{x}$, the gradient of a scalar loss $L$ with respect to $W$:
 
-`∂L/∂W = (∂L/∂y) · xᵀ`
+$$\frac{\partial L}{\partial W} = \frac{\partial L}{\partial \mathbf{y}} \cdot \mathbf{x}^\top$$
 
 This is an outer product — a rank-1 matrix. For a mini-batch, this sums over examples. This formula is the core of backpropagation through any linear layer.
 
 ## Quadratic Forms
 
-For `f(x) = xᵀAx` where `A` is symmetric:
+For $f(\mathbf{x}) = \mathbf{x}^\top A \mathbf{x}$ where $A$ is symmetric:
 
-`∂f/∂x = 2Ax`
+$$\frac{\partial f}{\partial \mathbf{x}} = 2A\mathbf{x}$$
 
-For non-symmetric `A`: `∂(xᵀAx)/∂x = (A + Aᵀ)x`. When `A = I` this gives `2x`, and you recover the gradient of L2 norm squared.
+For non-symmetric $A$: $\frac{\partial (\mathbf{x}^\top A \mathbf{x})}{\partial \mathbf{x}} = (A + A^\top)\mathbf{x}$. When $A = I$ this gives $2\mathbf{x}$, and you recover the gradient of L2 norm squared.
 
 ## The Jacobian Matrix
 
-For a vector-valued function `f: ℝⁿ → ℝᵐ`, the **Jacobian** is:
+For a vector-valued function $f: \mathbb{R}^n \to \mathbb{R}^m$, the **Jacobian** is:
 
-`J = ∂f/∂x ∈ ℝᵐˣⁿ`   where `Jᵢⱼ = ∂fᵢ/∂xⱼ`
+$$J = \frac{\partial f}{\partial \mathbf{x}} \in \mathbb{R}^{m \times n} \qquad \text{where } J_{ij} = \frac{\partial f_i}{\partial x_j}$$
 
 The Jacobian of a softmax layer is non-trivial because outputs are coupled (they sum to 1). Computing it correctly is essential for the backward pass through softmax.
 
 ## Chain Rule in Matrix Form
 
-For composed functions `L = f(g(x))`:
+For composed functions $L = f(g(\mathbf{x}))$:
 
-`∂L/∂x = (∂g/∂x)ᵀ · (∂L/∂g)`
+$$\frac{\partial L}{\partial \mathbf{x}} = \left(\frac{\partial g}{\partial \mathbf{x}}\right)^\top \cdot \frac{\partial L}{\partial g}$$
 
 Each layer in a network contributes a Jacobian factor. Backpropagation is the efficient left-to-right application of this product using the already-computed upstream gradients.
 
@@ -109,7 +109,7 @@ for i in range(n_in):
         dw = np.zeros_like(W); dw[i, j] = h
         grad_numerical[i, j] = (loss((W+dw).ravel()) - loss((W-dw).ravel())) / (2*h)
 
-print(f"\\nAnalytic vs numerical gradient match: "
+print(f"\nAnalytic vs numerical gradient match: "
       f"{np.allclose(dL_dW, grad_numerical, atol=1e-5)}")
 print(f"Max absolute error: {np.abs(dL_dW - grad_numerical).max():.2e}")
 ```
