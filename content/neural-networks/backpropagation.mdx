@@ -1,0 +1,101 @@
+---
+title: Backpropagation
+track: neural-networks
+slug: backpropagation
+estimatedMinutes: 12
+prerequisites: [perceptron]
+---
+
+## What is Backpropagation?
+
+Backpropagation is the algorithm that teaches neural networks. It computes how much each weight in the network contributed to the final error — then adjusts them all to reduce that error. Without backprop, training deep networks would be computationally intractable.
+
+The key insight: **the chain rule of calculus lets us efficiently compute gradients for every parameter in the network in a single backward pass.**
+
+<BackpropDiagram animate={true} showGradients={true} />
+
+## How it works
+
+1. **Forward pass** — feed input through the network, compute output $\hat{y}$
+2. **Compute loss** — measure how wrong the prediction was: $L = \frac{1}{2}(y - \hat{y})^2$
+3. **Backward pass** — apply the chain rule layer by layer, computing $\frac{\partial L}{\partial w}$ for every weight $w$
+4. **Update weights** — $w \leftarrow w - \eta \cdot \frac{\partial L}{\partial w}$ where $\eta$ is the learning rate
+
+The chain rule is the engine:
+
+$$\frac{\partial L}{\partial w} = \frac{\partial L}{\partial \hat{y}} \cdot \frac{\partial \hat{y}}{\partial z} \cdot \frac{\partial z}{\partial w}$$
+
+Each term is easy to compute individually. Backprop just chains them together efficiently.
+
+## In code
+
+<CodeRunner code={`import numpy as np
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+def sigmoid_deriv(x):
+    s = sigmoid(x)
+    return s * (1 - s)
+
+# Simple 1-layer network
+x = np.array([0.5, 0.8])    # input
+y = 1.0                       # target
+w = np.array([0.3, -0.1])    # weights
+
+# Forward pass
+z = np.dot(w, x)
+y_hat = sigmoid(z)
+loss = 0.5 * (y - y_hat) ** 2
+
+# Backward pass
+dL_dyhat = -(y - y_hat)
+dyhat_dz = sigmoid_deriv(z)
+dz_dw = x
+
+# Chain rule
+grad_w = dL_dyhat * dyhat_dz * dz_dw
+
+print(f"Prediction: {y_hat:.4f}")
+print(f"Loss:       {loss:.4f}")
+print(f"Gradients:  {grad_w}")
+print(f"Updated w:  {w - 0.1 * grad_w}")
+`} />
+
+## Quick check
+
+<Quiz questions={[
+  {
+    question: "What does the chain rule allow us to compute in backpropagation?",
+    options: [
+      "The forward pass output",
+      "The gradient of the loss with respect to every weight",
+      "The activation function value",
+      "The learning rate"
+    ],
+    correct: 1,
+    explanation: "The chain rule decomposes the gradient of a composite function into a product of simpler gradients — letting us compute ∂L/∂w for every weight efficiently in one backward pass."
+  },
+  {
+    question: "In the update rule w ← w - η · ∂L/∂w, what is η?",
+    options: [
+      "The loss value",
+      "The gradient magnitude",
+      "The learning rate — controls step size",
+      "The activation function"
+    ],
+    correct: 2,
+    explanation: "η (eta) is the learning rate — a hyperparameter that controls how large a step we take in the direction of the negative gradient. Too large and training diverges; too small and it converges slowly."
+  },
+  {
+    question: "Why is backpropagation more efficient than computing gradients numerically?",
+    options: [
+      "It uses less memory",
+      "It computes all gradients in one pass using the chain rule, vs. one pass per parameter for numerical methods",
+      "It avoids floating point errors",
+      "It doesn't need a loss function"
+    ],
+    correct: 1,
+    explanation: "Numerical gradient estimation requires two forward passes per parameter (finite differences). Backprop computes all gradients in a single backward pass — O(1) passes vs O(n) for n parameters."
+  }
+]} />
