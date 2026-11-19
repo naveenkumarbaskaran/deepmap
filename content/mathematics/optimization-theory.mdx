@@ -1,0 +1,128 @@
+---
+title: "Optimization Theory"
+track: "mathematics"
+estimatedMinutes: 12
+description: "Convex vs non-convex landscapes, gradient descent variants, and convergence — the engine of model training"
+---
+
+## Why Optimization?
+
+Training a neural network means solving: `min_θ L(θ)` over possibly billions of parameters. This is an optimization problem. Understanding the landscape — where the minima are, what saddle points do, why learning rate matters — is what separates practitioners who debug training from those who just rerun the same script hoping for a different result.
+
+## Convex vs Non-Convex Optimization
+
+A function is **convex** if the line segment between any two points on its graph lies above or on the graph: `f(λx + (1-λ)y) ≤ λf(x) + (1-λ)f(y)`.
+
+Convex problems are tractable — any local minimum is a global minimum. Linear regression with MSE loss is convex; gradient descent is guaranteed to converge.
+
+Deep neural networks create **non-convex** loss surfaces. This seems dangerous — won't we get stuck in bad local minima? In practice, empirical and theoretical work shows that:
+1. Most local minima in deep nets have similar loss to the global minimum
+2. **Saddle points** (not local minima) are the real obstacle in high dimensions
+3. Overparameterized models often have many equivalent global minima connected by flat loss paths
+
+## Critical Points: Minima, Maxima, Saddle Points
+
+At a critical point, `∇L(θ) = 0`. What kind of critical point it is depends on the **Hessian** `H = ∇²L`:
+- All eigenvalues of H > 0: **local minimum** (bowl shape)
+- All eigenvalues of H < 0: **local maximum**
+- Mixed signs: **saddle point** — gradient vanishes but it's neither min nor max
+
+In high dimensions, random critical points are almost always saddle points. Gradient descent with noise (SGD) tends to escape saddle points via perturbation.
+
+## Gradient Descent and Variants
+
+**Vanilla gradient descent** (batch GD): update on the full dataset:
+`θ ← θ - η·∇L(θ)`
+
+**Stochastic gradient descent (SGD)**: update on one sample at a time. Noisy but faster per step; noise helps escape saddle points.
+
+**Mini-batch SGD**: update on batches of size B. Standard in modern DL — balances gradient quality and step frequency.
+
+**Momentum**: accumulates velocity to smooth past gradients:
+`v ← βv + ∇L;   θ ← θ - η·v`
+
+**Adam**: adaptive per-parameter learning rates using first and second moment estimates. Dominant in modern deep learning; converges fast but can generalize worse than SGD on some tasks.
+
+## Learning Rate Effects
+
+The learning rate η is the most important hyperparameter:
+- **Too large**: loss oscillates or diverges (steps overshoot the minimum)
+- **Too small**: painfully slow convergence; can get stuck in flat regions
+- **Schedules**: cosine annealing, warmup + decay, cyclic LR — all strategies to get the benefits of large η early and small η late
+
+The **loss landscape curvature** (Hessian eigenvalues) determines the optimal learning rate. High-curvature directions need small η; flat directions can use large η. Adaptive optimizers (Adam, RMSProp) attempt to handle this automatically.
+
+## Convergence Conditions
+
+For convex smooth functions, GD with learning rate `η ≤ 1/L` (where L is the Lipschitz constant of the gradient) converges at rate `O(1/t)`. For strongly convex functions: exponential convergence `O(ρᵗ)` where `ρ < 1`.
+
+For non-convex functions: convergence to a **stationary point** (not guaranteed global minimum) at rate `O(1/√t)` for SGD.
+
+<NeuronDiagram animate />
+
+```python runnable
+import numpy as np
+
+# 2D loss surface: L(x,y) = x^2 + 10*y^2  (elongated bowl — ill-conditioned)
+def loss(theta):
+    return theta[0]**2 + 10 * theta[1]**2
+
+def grad_loss(theta):
+    return np.array([2*theta[0], 20*theta[1]])
+
+def run_gd(lr, steps=200, theta0=np.array([4.0, 2.0])):
+    theta = theta0.copy()
+    losses = []
+    for _ in range(steps):
+        losses.append(loss(theta))
+        theta -= lr * grad_loss(theta)
+    return np.array(losses), theta
+
+def run_sgd_momentum(lr, beta=0.9, steps=200, theta0=np.array([4.0, 2.0])):
+    theta, v = theta0.copy(), np.zeros(2)
+    losses = []
+    rng = np.random.default_rng(1)
+    for _ in range(steps):
+        losses.append(loss(theta))
+        noise = rng.normal(0, 0.1, 2)   # simulate mini-batch noise
+        g = grad_loss(theta) + noise
+        v = beta * v + g
+        theta -= lr * v
+    return np.array(losses), theta
+
+print("=== Gradient Descent: Learning Rate Comparison ===")
+for lr in [0.001, 0.05, 0.12]:
+    l, final = run_gd(lr)
+    print(f"  lr={lr:.3f}: final loss={l[-1]:.6f}, theta={np.round(final,3)}")
+
+print("\\n=== SGD with Momentum (lr=0.05, beta=0.9) ===")
+l_mom, final_mom = run_sgd_momentum(0.05)
+print(f"  final loss={l_mom[-1]:.6f}, theta={np.round(final_mom,3)}")
+
+# Show how loss decreases over steps
+gd_losses, _ = run_gd(0.05)
+print(f"\\n=== Convergence curve (lr=0.05) ===")
+for step in [0, 10, 50, 100, 199]:
+    print(f"  step {step:>3}: L = {gd_losses[step]:.6f}")
+```
+
+```quiz
+[{
+    question: "In high-dimensional non-convex optimization, the most common obstacle to convergence (compared to local minima) is:",
+    options: ["Flat regions", "Saddle points", "Local maxima", "Exploding gradients"],
+    correct: 1,
+    explanation: "In high dimensions, the probability that all Hessian eigenvalues are positive (a true local minimum) is extremely low. Most critical points are saddle points with mixed-sign eigenvalues. SGD's noise naturally escapes many saddle points."
+  },
+  {
+    question: "What is the effect of a learning rate that is too large?",
+    options: ["Slow convergence", "Loss oscillates or diverges because gradient steps overshoot the minimum", "The model underfits", "Momentum accumulates too fast"],
+    correct: 1,
+    explanation: "If η > 2/L (where L is the Lipschitz constant), gradient descent steps overshoot the minimum and the loss oscillates or diverges. The optimal learning rate depends on the curvature of the loss surface."
+  },
+  {
+    question: "Why does SGD (with noise from mini-batches) sometimes generalize better than Adam despite slower convergence?",
+    options: ["Adam uses more memory", "SGD's noise finds flatter minima which generalize better than sharp minima found by Adam", "Adam has more hyperparameters", "SGD is equivalent to L2 regularization"],
+    correct: 1,
+    explanation: "Sharp minima have high Hessian curvature — small weight perturbations cause large loss increases — so they generalize poorly. SGD's noise preferentially escapes sharp minima and settles in flatter regions that are more robust to train/test distribution shifts."
+  }]
+```

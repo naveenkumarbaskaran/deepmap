@@ -1,0 +1,113 @@
+---
+title: "Probability"
+track: "mathematics"
+estimatedMinutes: 10
+description: "Random variables, distributions, and Bayes theorem — the language of uncertainty in ML"
+---
+
+## Why Probability?
+
+Machine learning models don't output facts — they output *beliefs*. A classifier says "90% cat, 10% dog." A language model assigns probabilities to every next token. Probability theory is the formal language for reasoning under uncertainty, and it underpins nearly every ML algorithm from logistic regression to diffusion models.
+
+## Random Variables and Distributions
+
+A **random variable** X maps outcomes of a random process to numbers. Its **probability distribution** describes how likely each value is.
+
+- **Discrete**: `P(X = x)` — e.g. a fair die: `P(X=1) = P(X=2) = ... = 1/6`
+- **Continuous**: described by a **probability density function** (PDF) `p(x)`, where `P(a ≤ X ≤ b) = ∫ p(x) dx`
+
+Key distributions in ML:
+- **Gaussian** `N(μ, σ²)` — central limit theorem, weight initialization, Gaussian noise
+- **Bernoulli** — single binary outcome; backbone of logistic regression
+- **Categorical** — softmax output; multinomial generalization of Bernoulli
+- **Uniform** — used in sampling, dropout masks
+
+## Expectation and Variance
+
+The **expectation** `E[X]` is the probability-weighted average: `E[X] = Σ x·P(X=x)` (discrete) or `∫ x·p(x) dx` (continuous).
+
+The **variance** measures spread: `Var(X) = E[(X - E[X])²] = E[X²] - E[X]²`.
+
+Both appear everywhere in ML: loss functions are expectations over data distributions, and regularization controls variance of model outputs.
+
+## Joint, Conditional, and Marginal Probability
+
+Given two variables X and Y:
+- **Joint**: `P(X, Y)` — probability of both together
+- **Marginal**: `P(X) = Σ_y P(X, Y=y)` — sum out the other variable
+- **Conditional**: `P(X | Y) = P(X, Y) / P(Y)` — probability of X given Y is known
+
+**Independence**: X and Y are independent iff `P(X, Y) = P(X)·P(Y)`. This assumption underlies Naive Bayes.
+
+## Bayes Theorem
+
+The most important equation in probabilistic ML:
+
+`P(θ | data) = P(data | θ) · P(θ) / P(data)`
+
+- **Prior** `P(θ)` — belief about parameters before seeing data
+- **Likelihood** `P(data | θ)` — how probable the data is under parameters θ
+- **Posterior** `P(θ | data)` — updated belief after seeing data
+- **Evidence** `P(data)` — normalizing constant (often intractable)
+
+## MLE vs MAP
+
+**Maximum Likelihood Estimation (MLE)**: find θ that maximizes `P(data | θ)`. Ignores the prior. Equivalent to minimizing cross-entropy loss in classification.
+
+**Maximum A Posteriori (MAP)**: find θ that maximizes `P(θ | data) ∝ P(data | θ)·P(θ)`. Incorporates the prior. With a Gaussian prior, MAP is equivalent to L2 regularization (weight decay).
+
+<NeuronDiagram animate />
+
+```python runnable
+import numpy as np
+
+rng = np.random.default_rng(42)
+
+# 1. Sample from a Gaussian
+mu, sigma = 0.0, 1.0
+samples = rng.normal(mu, sigma, 1000)
+print(f"Gaussian N(0,1): mean={samples.mean():.3f}, std={samples.std():.3f}")
+
+# 2. Sample from a Bernoulli (p=0.3)
+p = 0.3
+bernoulli_samples = rng.binomial(1, p, 1000)
+print(f"Bernoulli(0.3):  mean={bernoulli_samples.mean():.3f} (expect 0.300)")
+
+# 3. Bayes theorem — coin flip update
+# Prior: Beta(2, 2) approximated as p=0.5
+# Observe 7 heads in 10 flips
+# Likelihood: Binomial
+heads, trials = 7, 10
+p_grid = np.linspace(0, 1, 1000)
+prior = np.ones_like(p_grid)          # uniform prior
+likelihood = p_grid**heads * (1 - p_grid)**(trials - heads)
+posterior = likelihood * prior
+posterior /= posterior.sum()           # normalize
+
+map_estimate = p_grid[np.argmax(posterior)]
+mle_estimate = heads / trials
+print(f"\\nAfter 7 heads / 10 flips:")
+print(f"  MLE estimate: {mle_estimate:.3f}")
+print(f"  MAP estimate: {map_estimate:.3f}")
+```
+
+```quiz
+[{
+    question: "In Bayes theorem P(θ|data) ∝ P(data|θ)·P(θ), what does P(data|θ) represent?",
+    options: ["The posterior", "The prior", "The likelihood", "The marginal"],
+    correct: 2,
+    explanation: "P(data|θ) is the likelihood — how probable the observed data is given a specific parameter setting θ. MLE maximizes exactly this term."
+  },
+  {
+    question: "What is the relationship between MAP estimation with a Gaussian prior and L2 regularization?",
+    options: ["They are unrelated", "MAP with Gaussian prior is equivalent to L2 regularization (weight decay)", "MAP requires L1 regularization", "They produce the same result only for linear models"],
+    correct: 1,
+    explanation: "A Gaussian prior on weights contributes a log-probability term -||w||² to the log-posterior, which is exactly the L2 penalty. MAP maximization thus equals MLE + weight decay."
+  },
+  {
+    question: "What condition makes two random variables X and Y independent?",
+    options: ["E[X] = E[Y]", "P(X|Y) = P(X)", "Var(X) = Var(Y)", "Their distributions are the same"],
+    correct: 1,
+    explanation: "Independence means knowing Y gives no information about X: P(X|Y) = P(X). Equivalently, the joint factorizes: P(X,Y) = P(X)·P(Y)."
+  }]
+```

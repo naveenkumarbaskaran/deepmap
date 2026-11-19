@@ -1,0 +1,184 @@
+---
+title: "Loss Functions"
+track: "neural-networks"
+estimatedMinutes: 10
+description: "MSE, cross-entropy, binary cross-entropy, KL divergence, and contrastive losses — what they measure, why cross-entropy connects to maximum likelihood, and how to implement them stably."
+---
+
+## What a Loss Function Does
+
+A loss function maps model predictions and ground-truth labels to a scalar that measures how wrong the model is. The optimizer minimises this scalar. The choice of loss encodes your assumptions about the task: regression vs. classification, probabilistic vs. geometric, single-output vs. distribution matching.
+
+## MSE for Regression
+
+**Mean Squared Error** is the natural loss when you assume prediction errors are Gaussian:
+
+```
+MSE = (1/N) Σᵢ (yᵢ − ŷᵢ)²
+```
+
+The quadratic penalty means MSE is very sensitive to outliers — a single large error dominates. The gradient with respect to ŷ is simply 2(ŷ−y)/N — linear in the error, which is clean for gradient descent. MSE is the maximum likelihood estimator under a Gaussian noise model.
+
+## Cross-Entropy and Maximum Likelihood
+
+For classification, the standard loss is **cross-entropy**. Given true label y (a one-hot vector) and predicted probabilities p̂ (from softmax):
+
+```
+CE = −Σₖ yₖ log(p̂ₖ)  =  −log(p̂_true)
+```
+
+Since y is one-hot, only the log-probability assigned to the correct class matters. Minimising cross-entropy is exactly **maximum likelihood estimation**: we are finding parameters that maximise the probability the model assigns to the observed labels. The two are equivalent by taking the negative log.
+
+For numerical stability, never compute softmax then log separately. Combine them as **log-softmax**:
+
+```
+log-softmax(zₖ) = zₖ − log(Σⱼ exp(zⱼ))
+```
+
+This avoids exp overflow. The trick behind it is **log-sum-exp**: log Σ exp(zⱼ) = c + log Σ exp(zⱼ−c), where c = max(z).
+
+**Gradient of cross-entropy w.r.t. logits** has a beautiful closed form: ∂CE/∂z = p̂ − y, where p̂ = softmax(z). The gradient is simply the probability vector minus the one-hot target — this falls out naturally from the chain rule through softmax.
+
+## Binary Cross-Entropy
+
+For a single binary output with sigmoid activation:
+
+```
+BCE = −[y·log(ŷ) + (1−y)·log(1−ŷ)]
+```
+
+The same MLE interpretation applies. For numerical stability, compute BCE directly from logits using the identity: log(1+eˣ) = max(x,0) + log(1+e^{−|x|}).
+
+## KL Divergence as a Loss
+
+KL divergence measures how much distribution Q diverges from reference P:
+
+```
+KL(P ‖ Q) = Σₖ P(k) log(P(k)/Q(k))
+```
+
+It is not symmetric. Cross-entropy = H(P) + KL(P‖Q), so minimising CE over Q is equivalent to minimising KL divergence when the target distribution P is fixed. KL divergence appears as a loss in VAEs (regularising the latent posterior toward a prior) and in distillation (matching a student to a teacher's distribution).
+
+## Contrastive and Triplet Losses
+
+For learning embeddings (representations), distance-based losses are used:
+
+**Contrastive loss** (Hadsell 2006): pushes embeddings of similar pairs together and dissimilar pairs apart, with a margin m:
+
+```
+L = y·d² + (1−y)·max(0, m−d)²
+```
+
+**Triplet loss**: for an anchor a, positive p (same class), and negative n (different class):
+
+```
+L = max(0, d(a,p) − d(a,n) + margin)
+```
+
+Enforces that the anchor is at least `margin` closer to the positive than to any negative.
+
+<NeuronDiagram animate />
+
+## Code: Losses and the CE Gradient
+
+```python runnable
+import numpy as np
+
+# ── MSE ───────────────────────────────────────────────────────────────────────
+def mse(y_true, y_pred):
+    return np.mean((y_true - y_pred)**2)
+
+def mse_grad(y_true, y_pred):
+    return 2 * (y_pred - y_true) / len(y_true)
+
+# ── Log-Sum-Exp (numerically stable) ─────────────────────────────────────────
+def log_sum_exp(z):
+    c = np.max(z)
+    return c + np.log(np.sum(np.exp(z - c)))
+
+def softmax(z):
+    e = np.exp(z - np.max(z))
+    return e / e.sum()
+
+# ── Cross-Entropy (from logits, numerically stable) ───────────────────────────
+def cross_entropy(logits, y_true_idx):
+    log_probs = logits - log_sum_exp(logits)   # log-softmax
+    return -log_probs[y_true_idx]
+
+# ── Gradient of CE w.r.t. logits: softmax(z) - one_hot(y) ────────────────────
+def ce_grad(logits, y_true_idx):
+    p = softmax(logits)
+    p[y_true_idx] -= 1.0   # subtract 1 from correct class
+    return p
+
+# ── Binary Cross-Entropy (from logits — stable) ───────────────────────────────
+def bce_from_logits(logits, y):
+    # log(1 + exp(x)) = max(x,0) + log(1 + exp(-|x|))
+    return np.mean(np.maximum(logits, 0) - logits * y
+                   + np.log1p(np.exp(-np.abs(logits))))
+
+# ── Demonstration ─────────────────────────────────────────────────────────────
+y_true  = np.array([2.0, 0.5, 1.0])
+y_pred  = np.array([2.3, 0.1, 1.5])
+print(f"MSE:           {mse(y_true, y_pred):.4f}")
+print(f"MSE gradient:  {mse_grad(y_true, y_pred).round(4)}")
+
+logits = np.array([2.0, 1.0, 0.5, -0.5])
+true_class = 0
+probs = softmax(logits)
+print(f"\\nLogits:        {logits}")
+print(f"Softmax probs: {probs.round(4)}")
+print(f"Cross-entropy (class {true_class}): {cross_entropy(logits, true_class):.4f}")
+print(f"CE gradient:   {ce_grad(logits, true_class).round(4)}  (= p_hat - one_hot)")
+
+# Binary cross-entropy
+bin_logits = np.array([ 2.0, -1.0,  0.5, -3.0])
+bin_labels = np.array([ 1.0,  0.0,  1.0,  0.0])
+print(f"\\nBinary CE (from logits): {bce_from_logits(bin_logits, bin_labels):.4f}")
+
+# ── KL divergence ────────────────────────────────────────────────────────────
+def kl_divergence(p, q):
+    p, q = np.array(p), np.array(q)
+    return np.sum(p * np.log(p / q + 1e-12))
+
+P = np.array([0.5, 0.3, 0.2])          # teacher (reference)
+Q = np.array([0.4, 0.4, 0.2])          # student (approximate)
+print(f"\\nKL(P‖Q) = {kl_divergence(P, Q):.5f}")
+print(f"KL(Q‖P) = {kl_divergence(Q, P):.5f}  (not symmetric)")
+```
+
+```quiz
+[{
+    question: "Why is minimising cross-entropy equivalent to maximum likelihood estimation for classification?",
+    options: [
+      "Because cross-entropy is proportional to the squared error",
+      "Because maximising the log-likelihood of labels under the model is identical to minimising the negative log-probability assigned to correct labels",
+      "Because MLE always produces a softmax output",
+      "Because the KL divergence between label and prediction is always minimised by cross-entropy"
+    ],
+    correct: 1,
+    explanation: "MLE finds parameters that maximise Σ log P(yᵢ|xᵢ; θ). For classification with softmax, P(y|x) = p̂_true. Maximising Σ log p̂_true is identical to minimising Σ −log p̂_true, which is cross-entropy. The two objectives are the same up to sign."
+  },
+  {
+    question: "What is the gradient of cross-entropy loss with respect to the input logits (before softmax)?",
+    options: [
+      "The softmax probabilities divided by the number of classes",
+      "The one-hot label vector",
+      "The softmax probability vector minus the one-hot label vector",
+      "Twice the difference between logits and labels"
+    ],
+    correct: 2,
+    explanation: "Applying the chain rule through softmax into cross-entropy gives ∂CE/∂z = p̂ − y, where p̂ = softmax(z) and y is the one-hot target. This elegant result means the gradient at the correct class is p̂_true − 1, and at all other classes it is p̂_k."
+  },
+  {
+    question: "Why should cross-entropy be computed from logits rather than from softmax probabilities?",
+    options: [
+      "Logits produce a lower loss value",
+      "Computing exp() then log() separately introduces catastrophic cancellation and overflow",
+      "Softmax outputs cannot be passed to a logarithm",
+      "Gradients are only defined for logits, not for probabilities"
+    ],
+    correct: 1,
+    explanation: "Computing softmax first (exp of large logits can overflow to inf) then taking log(0.0) for near-zero probabilities causes numerical instability. The combined log-softmax formula — using the log-sum-exp trick — avoids both overflow and underflow in a single stable computation."
+  }]
+```

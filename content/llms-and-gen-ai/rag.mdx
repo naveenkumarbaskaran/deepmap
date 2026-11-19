@@ -1,0 +1,157 @@
+---
+title: "Retrieval-Augmented Generation"
+track: "llms-and-gen-ai"
+estimatedMinutes: 13
+description: "Learn how RAG grounds LLM outputs in retrieved evidence — covering dense and sparse retrieval, chunking, reranking, and advanced techniques like HyDE and agentic RAG."
+---
+
+## The Problem RAG Solves
+
+LLMs have a knowledge cutoff and no access to private data. They also **hallucinate** — generating plausible-sounding but factually wrong content, especially when reasoning beyond their training data. Retrieval-Augmented Generation (RAG) addresses this by retrieving relevant context at query time and injecting it into the prompt before generation.
+
+```
+Query → Retrieve relevant chunks → Augment prompt → Generate grounded answer
+```
+
+## Retrieval: Dense vs Sparse
+
+**Sparse retrieval** (BM25, TF-IDF) scores documents based on keyword overlap. Fast, interpretable, and strong on exact-match queries. Fails on semantic paraphrases.
+
+**Dense retrieval** embeds both query and documents into a shared vector space (using an encoder model like `bge-large` or `e5-mistral`). Similarity is measured with cosine or dot product. Captures semantic meaning but requires a vector index (Faiss, ChromaDB, Pinecone, Weaviate).
+
+**Hybrid retrieval** combines both — sparse for precision, dense for recall — typically fused with Reciprocal Rank Fusion (RRF).
+
+## Chunking Strategies
+
+Documents must be split into chunks before embedding, since embedding models have token limits (~512 tokens typical). Strategy matters:
+
+- **Fixed-size** — simple, fast, but may cut mid-sentence.
+- **Sentence/paragraph** — natural boundaries, better coherence.
+- **Semantic chunking** — split at topic shifts (detected by embedding distance). Best quality.
+- **Overlap** — 10–20% overlap between chunks prevents missed context at boundaries.
+
+Chunk size is a trade-off: small chunks = higher precision per chunk, lower recall; large chunks = more context, noisier retrieval.
+
+## Reranking
+
+A retriever returns top-K candidates quickly (e.g., top-20). A **reranker** (cross-encoder) then scores each (query, chunk) pair jointly — far more accurate than bi-encoder similarity but too slow to run on the full corpus. The pipeline: retrieve top-20 → rerank → keep top-5 → inject into prompt.
+
+<TransformerBlock animate />
+
+## Naive RAG vs Advanced RAG
+
+**Naive RAG** embeds the query as-is, retrieves top-K, appends to prompt. Breaks on:
+- Ambiguous queries (retrieves irrelevant chunks)
+- Multi-hop questions (single retrieval misses chain reasoning)
+- Queries that work better if rephrased
+
+**Advanced RAG** techniques:
+- **Query rewriting** — use an LLM to rephrase the query before retrieval.
+- **HyDE (Hypothetical Document Embeddings)** — generate a hypothetical answer, embed that, retrieve based on the hypothetical. Closes the query–document vocabulary gap.
+- **Multi-query** — decompose into sub-queries, retrieve separately, merge results.
+- **Agentic RAG** — treat retrieval as a tool the LLM calls iteratively, deciding when to retrieve and what to ask.
+
+## RAG Evaluation
+
+| Metric | What it measures |
+|---|---|
+| Faithfulness | Is the answer supported by the retrieved context? |
+| Answer relevance | Does the answer address the question? |
+| Context recall | Did retrieval surface the right chunks? |
+| Context precision | Are the retrieved chunks all relevant? |
+
+Frameworks like RAGAS, TruLens, and DeepEval automate these metrics.
+
+## Cosine Similarity Search — Numpy Implementation
+
+```python runnable
+import numpy as np
+
+np.random.seed(7)
+
+def cosine_similarity(a, b):
+    """Cosine similarity between two vectors."""
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-10)
+
+# Simulate 384-dim embeddings (typical for sentence-transformers)
+dim = 384
+
+# Query embedding
+query = np.random.randn(dim)
+query /= np.linalg.norm(query)  # normalize to unit sphere
+
+# 5 document chunk embeddings
+doc_titles = [
+    "Introduction to neural networks",
+    "Transformer architecture and attention",
+    "RAG pipeline with vector databases",
+    "Fine-tuning LLMs with LoRA",
+    "Retrieval strategies: BM25 vs dense"
+]
+
+# Make docs 2 and 4 more similar to the query
+docs = np.random.randn(5, dim)
+docs[2] = query + np.random.randn(dim) * 0.3   # doc 2: very similar
+docs[4] = query + np.random.randn(dim) * 0.6   # doc 4: somewhat similar
+docs /= np.linalg.norm(docs, axis=1, keepdims=True)
+
+# Compute cosine similarities
+scores = np.array([cosine_similarity(query, doc) for doc in docs])
+
+# Rank documents
+ranked = np.argsort(scores)[::-1]
+
+print("RAG Retrieval Results (cosine similarity search):")
+print(f"{'Rank':<6} {'Score':<8} Document")
+print("-" * 60)
+for rank, idx in enumerate(ranked):
+    marker = " ← top-2 retrieved" if rank < 2 else ""
+    print(f"{rank+1:<6} {scores[idx]:.4f}   {doc_titles[idx]}{marker}")
+
+print()
+print(f"Top-2 retrieved:")
+for rank in range(2):
+    idx = ranked[rank]
+    print(f"  [{rank+1}] {doc_titles[idx]}  (score: {scores[idx]:.4f})")
+
+print()
+print("These chunks would be injected into the LLM prompt as context.")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What is the key difference between sparse (BM25) and dense retrieval?",
+    options: [
+      "BM25 uses neural networks; dense retrieval uses keyword counting",
+      "BM25 matches on keyword overlap; dense retrieval matches on semantic embedding similarity",
+      "Dense retrieval is faster than BM25 on large corpora",
+      "BM25 requires a GPU; dense retrieval runs on CPU"
+    ],
+    correct: 1,
+    explanation: "BM25 is a statistical keyword-overlap model. Dense retrieval encodes query and documents into vector embeddings and finds nearest neighbors — capturing semantic similarity even when vocabulary differs."
+  },
+  {
+    question: "What problem does HyDE (Hypothetical Document Embeddings) solve?",
+    options: [
+      "It reduces the number of chunks that need to be embedded",
+      "It closes the vocabulary gap between a short query and longer documents by embedding a hypothetical answer",
+      "It speeds up cosine similarity search using approximate nearest neighbors",
+      "It automatically sets the optimal chunk size for a given corpus"
+    ],
+    correct: 1,
+    explanation: "Short queries and long documents live in different parts of embedding space. HyDE generates a hypothetical answer to the query first, then embeds that — producing a richer vector that is closer to relevant documents."
+  },
+  {
+    question: "In RAG evaluation, what does 'faithfulness' measure?",
+    options: [
+      "Whether the answer is factually correct according to world knowledge",
+      "Whether the retrieved chunks are relevant to the question",
+      "Whether the generated answer is supported by the retrieved context",
+      "Whether the retriever surfaces the highest-scoring chunks"
+    ],
+    correct: 2,
+    explanation: "Faithfulness checks that every claim in the generated answer is grounded in the retrieved context — not in the LLM's parametric knowledge. A faithful answer can still be wrong if the retrieved context is wrong."
+  }]
+```

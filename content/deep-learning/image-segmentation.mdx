@@ -1,0 +1,138 @@
+---
+title: "Image Segmentation"
+track: "deep-learning"
+estimatedMinutes: 12
+description: "Go beyond bounding boxes to pixel-level predictions. Learn semantic vs. instance segmentation, U-Net's encoder-decoder architecture with skip connections, and why dice loss handles class imbalance better than cross-entropy."
+---
+
+## Three Flavors of Segmentation
+
+| Type | What it labels |
+|------|----------------|
+| **Semantic** | Every pixel gets a class label (all cars same color) |
+| **Instance** | Distinguishes separate instances (car #1, car #2) |
+| **Panoptic** | Combines both — semantic for "stuff", instance for "things" |
+
+Semantic segmentation is the foundation. Instance segmentation (Mask R-CNN) extends detection to produce a per-object mask.
+
+## Fully Convolutional Networks (FCN)
+
+Standard classification CNNs end with fully connected layers that discard spatial information. **FCN (2015)** replaced all fully connected layers with 1×1 convolutions, turning the network into a function that accepts any input resolution and produces a spatial output map — one class score per pixel. The final spatial map is upsampled back to the input resolution.
+
+## U-Net: Encoder-Decoder with Skip Connections
+
+U-Net (Ronneberger et al., 2015, originally for medical imaging) is the dominant segmentation architecture:
+
+**Encoder (contracting path)**: standard conv→pool blocks, each halving spatial resolution and doubling channels. Builds rich semantic features.
+
+**Decoder (expanding path)**: transposed convolutions (learned upsampling) restore spatial resolution. At each scale, **skip connections** concatenate the corresponding encoder feature map with the decoder output.
+
+The skip connections are critical: the encoder's fine-grained spatial details (exact edge locations) are lost during downsampling. Skip connections route them directly to the decoder, allowing precise pixel-level reconstruction. This is fundamentally different from ResNet's additive skip — here, features are **concatenated** (more information).
+
+## Transposed Convolutions
+
+Also called deconvolution (a misnomer) or fractionally-strided convolutions. A transposed conv with stride 2 upsamples a feature map by inserting gaps between input values and running a standard convolution. This is learnable upsampling, unlike bilinear interpolation.
+
+## Loss Functions for Segmentation
+
+**Pixel-wise cross-entropy** treats each pixel independently. For a 512×512 image with 90% background and 10% foreground, the loss is dominated by background pixels — the network learns to predict background everywhere.
+
+**Dice loss** directly optimizes the overlap between prediction and ground truth:
+
+```
+Dice = (2 × |P ∩ G|) / (|P| + |G|)
+Dice loss = 1 − Dice
+```
+
+Dice loss is insensitive to class imbalance because it measures the ratio of overlap to total positive pixels — not accuracy over all pixels. It is the standard choice for medical image segmentation.
+
+## Diagram
+
+<ConvolutionViz animate />
+
+## Dice Loss Implementation
+
+```python runnable
+import numpy as np
+
+def dice_coefficient(pred, target, smooth=1e-6):
+    """
+    pred, target: arrays of same shape, values in [0, 1].
+    smooth: prevents division by zero.
+    """
+    intersection = np.sum(pred * target)
+    return (2.0 * intersection + smooth) / (np.sum(pred) + np.sum(target) + smooth)
+
+def dice_loss(pred, target):
+    return 1.0 - dice_coefficient(pred, target)
+
+def pixel_cross_entropy(pred, target, eps=1e-7):
+    """Binary cross-entropy averaged over all pixels."""
+    pred = np.clip(pred, eps, 1 - eps)
+    return -np.mean(target * np.log(pred) + (1 - target) * np.log(1 - pred))
+
+# Scenario: heavily imbalanced — 90% background (0), 10% foreground (1)
+np.random.seed(42)
+size = 100
+target = np.zeros(size)
+target[:10] = 1.0   # 10 foreground pixels
+
+# Model A: predicts everything as background (lazy baseline)
+pred_lazy = np.zeros(size)
+
+# Model B: reasonable prediction — gets foreground mostly right
+pred_good = np.zeros(size)
+pred_good[:8] = 0.9    # 8 of 10 foreground correctly predicted
+pred_good[8:12] = 0.4  # some uncertainty
+
+print("=== Lazy model (predicts all background) ===")
+print(f"  Cross-entropy loss : {pixel_cross_entropy(pred_lazy, target):.4f}")
+print(f"  Dice loss          : {dice_loss(pred_lazy, target):.4f}")
+
+print("\\n=== Good model (mostly correct foreground) ===")
+print(f"  Cross-entropy loss : {pixel_cross_entropy(pred_good, target):.4f}")
+print(f"  Dice loss          : {dice_loss(pred_good, target):.4f}")
+
+print()
+print("Cross-entropy of lazy model is LOW (90% background pixels predicted correctly).")
+print("Dice loss of lazy model is HIGH (1.0) — it correctly penalizes missing foreground.")
+print("Dice loss distinguishes the models; cross-entropy barely does.")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "Why does U-Net concatenate encoder feature maps in the decoder (skip connections)?",
+    options: [
+      "To reduce the number of decoder parameters",
+      "To restore fine-grained spatial details lost during encoder downsampling",
+      "To apply dropout only during decoding",
+      "To match the ResNet residual connection pattern"
+    ],
+    correct: 1,
+    explanation: "Downsampling in the encoder loses precise edge and position information while building semantic features. Skip connections route early-layer spatial details directly to the decoder, enabling accurate pixel-level predictions."
+  },
+  {
+    question: "What is the key advantage of dice loss over pixel-wise cross-entropy for segmentation?",
+    options: [
+      "Dice loss is differentiable; cross-entropy is not",
+      "Dice loss is insensitive to class imbalance; cross-entropy is dominated by majority-class pixels",
+      "Dice loss trains faster on GPU",
+      "Cross-entropy cannot handle multi-class problems"
+    ],
+    correct: 1,
+    explanation: "In imbalanced tasks (small foreground), cross-entropy loss is dominated by background pixels — predicting all background still gives low loss. Dice directly measures foreground overlap, so a model predicting all background gets Dice loss = 1."
+  },
+  {
+    question: "What distinguishes instance segmentation from semantic segmentation?",
+    options: [
+      "Instance segmentation only classifies entire images",
+      "Instance segmentation produces separate masks for each object instance, not just class labels per pixel",
+      "Instance segmentation uses bounding boxes instead of pixel masks",
+      "Semantic segmentation requires depth information"
+    ],
+    correct: 1,
+    explanation: "Semantic segmentation labels each pixel with a class — all cars are labeled 'car'. Instance segmentation goes further, assigning distinct masks to each individual car (#1, #2, etc.), distinguishing separate objects of the same class."
+  }]
+```

@@ -22,20 +22,19 @@ export function LessonProgress({ slug }: LessonProgressProps) {
 
   return (
     <div
-      className="flex items-center justify-between px-5 py-3"
-      style={{ borderBottom: "1px solid var(--border)" }}
+      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", borderBottom: "1px solid var(--border)" }}
     >
-      <div className="flex items-center gap-3">
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         <TrackBadge track={node.track as TrackId} size="sm" />
-        <span className="text-sm" style={{ color: "var(--muted)" }}>
+        <span style={{ fontSize: "0.875rem", color: "var(--muted)" }}>
           Lesson {lessonIndex + 1} of {progress.total}
         </span>
-        <span className="text-xs" style={{ color: "var(--muted)" }}>
+        <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
           · {node.estimatedMinutes}m
         </span>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs" style={{ color: "var(--muted)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
           {progress.completed}/{progress.total}
         </span>
         <ProgressRing

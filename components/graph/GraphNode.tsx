@@ -67,11 +67,11 @@ function GraphNodeComponent({ data, selected }: NodeProps) {
         <div className="flex items-center gap-1.5 mb-1">
           <div
             className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{ background: isLocked ? "#64748b" : color }}
+            style={{ background: isLocked ? "var(--muted)" : color }}
           />
           <span
             className="text-[10px] font-medium uppercase tracking-wide"
-            style={{ color: isLocked ? "#475569" : `${color}cc` }}
+            style={{ color: isLocked ? "var(--muted)" : `${color}cc` }}
           >
             {trackData?.emoji}
           </span>
@@ -80,14 +80,14 @@ function GraphNodeComponent({ data, selected }: NodeProps) {
         {/* Label */}
         <div
           className="text-[11px] font-semibold leading-tight"
-          style={{ color: isLocked ? "#475569" : "#f1f5f9" }}
+          style={{ color: isLocked ? "var(--muted)" : "var(--foreground)" }}
         >
           {nodeData.label}
         </div>
 
         {/* Time + state */}
         <div className="flex items-center justify-between mt-1.5">
-          <span className="text-[9px]" style={{ color: "#64748b" }}>
+          <span className="text-[9px]" style={{ color: "var(--muted)" }}>
             {nodeData.estimatedMinutes}m
           </span>
           {isComplete && (
@@ -96,7 +96,7 @@ function GraphNodeComponent({ data, selected }: NodeProps) {
             </span>
           )}
           {isLocked && (
-            <span className="text-[9px]" style={{ color: "#475569" }}>
+            <span className="text-[9px]" style={{ color: "var(--muted)" }}>
               🔒
             </span>
           )}

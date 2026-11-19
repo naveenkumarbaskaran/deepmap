@@ -1,0 +1,139 @@
+---
+title: "Memory & Context"
+track: "agents"
+estimatedMinutes: 11
+description: "The four types of agent memory, how the context window acts as working RAM, KV-cache as implicit memory, and strategies for retrieval, compression, and cross-session consolidation."
+---
+
+## Why Memory Matters for Agents
+
+A stateless LLM call has no memory. Every token the agent needs to reason over must fit in a single context window. For simple Q&A this is fine. For long-horizon tasks — a debugging session spanning hours, a research project across dozens of sources — it breaks down immediately.
+
+Understanding memory in agents means understanding **what information lives where** and **how the agent retrieves it when needed**.
+
+## The Four Types of Agent Memory
+
+**1. In-context memory (working memory)**
+
+Everything currently in the context window. Fast, zero-latency, but bounded by window size (typically 8K–200K tokens). Analogous to RAM: large but finite, lost when the session ends.
+
+**2. External memory (vector DB / retrieval)**
+
+Stored outside the model, retrieved via semantic search. Unlimited in size; retrieval adds latency. The agent embeds a query, finds nearest neighbors in a vector store, and injects relevant chunks into context. Used in RAG pipelines.
+
+**3. Episodic memory (past interactions)**
+
+Records of prior conversations, decisions, and tool call outcomes. Enables an agent to "remember" that it already tried approach X and it failed. Can be stored in a database and retrieved by recency or relevance.
+
+**4. Semantic memory (knowledge base)**
+
+Structured or semi-structured facts about the world or domain — documentation, ontologies, verified knowledge files. Typically pre-indexed at setup time and retrieved on demand.
+
+## The Context Window as RAM
+
+Think of the context window as a fixed-size working memory. Everything the model can "see" at inference time is there: system prompt, conversation history, retrieved chunks, tool results, and the response so far.
+
+When context fills up, something must give:
+- **Sliding window** — drop oldest messages
+- **Compression** — summarize old context into a compact representation
+- **Prioritization** — score all items by relevance and evict the lowest-scoring
+
+**KV-cache** is a hardware-level form of memory: the attention key-value tensors for already-processed tokens are cached and reused, making repeated prefixes effectively free. Prompt caching in APIs (like Anthropic's) exposes this — stable context placed at the start of every conversation is cached and billed at a fraction of the normal input rate.
+
+## Memory Retrieval Strategies
+
+- **Recency** — most recent N items (simple, fast, but misses older relevant context)
+- **Relevance** — embed query, retrieve by cosine similarity (smart, adds latency)
+- **Hybrid** — combine recency + relevance score, weighted by task type
+- **Episodic replay** — retrieve by similarity to past task outcomes, not just content
+
+<TransformerBlock animate />
+
+## Sliding-Window Context Manager
+
+```python runnable
+import numpy as np
+
+np.random.seed(3)
+
+# Simulate a context window manager with a fixed token budget.
+# Each memory item has a token cost and a relevance score.
+# Goal: maximize total relevance within the token budget.
+
+BUDGET = 500  # token budget
+
+# 10 memory items: (label, tokens, relevance_score)
+items = [
+    ("system_prompt",        120, 1.00),
+    ("user_query",            30, 0.98),
+    ("tool_result_1",         80, 0.85),
+    ("tool_result_2",         90, 0.40),
+    ("msg_history_t-1",       60, 0.72),
+    ("msg_history_t-2",       55, 0.55),
+    ("msg_history_t-3",       50, 0.30),
+    ("retrieved_chunk_A",     70, 0.88),
+    ("retrieved_chunk_B",     65, 0.60),
+    ("retrieved_chunk_C",     75, 0.35),
+]
+
+labels    = [x[0] for x in items]
+tokens    = np.array([x[1] for x in items])
+relevance = np.array([x[2] for x in items])
+
+# Greedy selection: sort by relevance desc, fill budget
+order = np.argsort(-relevance)
+selected = []
+used = 0
+for i in order:
+    if used + tokens[i] <= BUDGET:
+        selected.append(i)
+        used += tokens[i]
+
+selected_set = set(selected)
+
+print(f"Token budget: {BUDGET}")
+print(f"{'Item':<22} {'Tokens':>7} {'Relevance':>10}  {'Status':>8}")
+print("-" * 55)
+for i, (lbl, tok, rel) in enumerate(items):
+    status = "KEEP" if i in selected_set else "EVICT"
+    print(f"{lbl:<22} {tok:>7} {rel:>10.2f}  {status:>8}")
+
+evicted = [items[i][0] for i in range(len(items)) if i not in selected_set]
+print(f"\\nUsed: {used}/{BUDGET} tokens  |  Evicted: {evicted}")
+```
+
+```quiz
+[{
+    question: "Which type of agent memory is bounded by the context window size?",
+    options: [
+      "External memory (vector DB)",
+      "Episodic memory",
+      "In-context memory (working memory)",
+      "Semantic memory (knowledge base)"
+    ],
+    correct: 2,
+    explanation: "In-context memory is everything currently in the context window. It is the fastest to access (zero retrieval latency) but strictly bounded by the model's maximum context length."
+  },
+  {
+    question: "How does KV-cache function as a form of memory in LLM inference?",
+    options: [
+      "It stores the model's weights between requests",
+      "It caches attention key-value tensors for already-processed tokens, making repeated prefixes cheap to reuse",
+      "It saves tool call results to disk for future sessions",
+      "It compresses old messages into a summary automatically"
+    ],
+    correct: 1,
+    explanation: "KV-cache stores the computed attention keys and values for tokens already processed. When the same prefix appears again (e.g. a stable system prompt), those computations are reused rather than recomputed — dramatically reducing cost and latency."
+  },
+  {
+    question: "Why is hybrid (recency + relevance) retrieval generally better than recency alone?",
+    options: [
+      "Recency retrieval requires a vector database, which is expensive",
+      "Hybrid retrieval always selects fewer tokens",
+      "Recency alone can miss older but highly relevant context; relevance scoring surfaces it",
+      "Recency retrieval is not supported by most vector stores"
+    ],
+    correct: 2,
+    explanation: "A pure recency strategy drops the oldest items first, even if they are the most relevant to the current query. Combining recency with a relevance score ensures important older context is preserved when it matters."
+  }]
+```

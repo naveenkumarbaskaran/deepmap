@@ -1,0 +1,120 @@
+---
+title: "Efficient Transformers"
+track: "transformers"
+estimatedMinutes: 13
+description: "Understand the O(n²) attention bottleneck and the landscape of solutions — sparse attention, linear approximations, FlashAttention's IO-aware rewrite, and grouped query attention used in modern LLMs."
+---
+
+## The O(n²) Problem
+
+Standard self-attention computes an n×n attention matrix for each layer and head. For a sequence of length n with d_model dimensions and h heads:
+
+- **Memory:** O(n² · h) for attention matrices
+- **Compute:** O(n² · d) for matrix multiplications
+
+At n=512, the attention matrix is 262K entries. At n=16384 (16K context), it's 268M entries — per layer. For a 32-layer model, this is completely impractical with standard attention.
+
+This bottleneck drove a decade of research into efficient alternatives.
+
+## Sparse Attention
+
+**Longformer** (Beltagy et al., 2020): Combines three patterns — local sliding-window attention (every token attends to its neighbors), dilated attention (strided windows for longer range), and global attention for a few special tokens (e.g., `[CLS]`). Reduces O(n²) to O(n · window_size), enabling sequences up to 16K.
+
+**BigBird** (Zaheer et al., 2020): Sparse random attention + local windowed + global tokens. Theoretically proven to be a universal approximator of sequence functions — retaining full-attention expressiveness with O(n) cost.
+
+## Linear Approximations
+
+**Linformer** (Wang et al., 2020): Projects Keys and Values from n to k dimensions (k << n) before attention: O(nk) instead of O(n²). Assumes the attention matrix is low-rank — empirically true for many tasks, but loses exact attention.
+
+**Performer** (Choromanski et al., 2020): Uses random feature maps (FAVOR+) to approximate the softmax kernel: `softmax(QKᵀ) ≈ φ(Q)φ(K)ᵀ` where φ is a carefully chosen feature map. Enables exact (unbiased) or approximate linear-time attention.
+
+## FlashAttention — IO-Aware Exact Attention
+
+**FlashAttention** (Dao et al., 2022) takes a different approach: rather than approximating attention, it computes *exact* attention but restructures the computation to minimize memory bandwidth.
+
+GPU computation is fast; moving data between HBM (high-bandwidth memory) and SRAM (on-chip) is the bottleneck. FlashAttention tiles the Q, K, V matrices into blocks that fit in SRAM and uses online softmax to avoid materializing the full n×n attention matrix. Memory usage drops from O(n²) to O(n), and wall-clock speed improves 2–4× despite identical arithmetic.
+
+FlashAttention v2 and v3 further optimize parallelism patterns. It has become the de facto standard for training modern LLMs.
+
+## Multi-Query and Grouped Query Attention
+
+**Multi-Query Attention (MQA)** (Shazeer, 2019): All heads share a single set of K and V projections; only Q is multi-head. Reduces KV-cache memory by h× and speeds up inference significantly. Used in PaLM, Falcon.
+
+**Grouped Query Attention (GQA)** (Ainslie et al., 2023): Compromise between full MHA and MQA — K and V are shared within groups of heads (e.g., 4 Q-heads share 1 K/V pair). Used in LLaMA 2 70B, LLaMA 3, Mistral. Provides most of MQA's inference speedup with minimal quality loss.
+
+<AttentionHeatmap animate />
+
+## Memory Scaling Across Sequence Lengths
+
+```python runnable
+import numpy as np
+
+d_model = 4096
+n_heads = 32
+n_layers = 32
+bytes_per_element = 2  # float16
+
+sequence_lengths = [512, 1024, 4096, 16384]
+
+print(f"{'n':>8} | {'Attn matrix (MB)':>18} | {'All heads (MB)':>16} | {'All layers (GB)':>16}")
+print("-" * 68)
+
+for n in sequence_lengths:
+    # Single head attention matrix: n x n float16 elements
+    single_head_mb = (n * n * bytes_per_element) / (1024**2)
+    all_heads_mb   = single_head_mb * n_heads
+    all_layers_gb  = (all_heads_mb * n_layers) / 1024
+    print(f"{n:>8,} | {single_head_mb:>17.1f} | {all_heads_mb:>15.1f} | {all_layers_gb:>15.2f}")
+
+print()
+print("KV-cache memory (MQA vs MHA at n=16384):")
+d_k = d_model // n_heads
+# MHA: 2 (K+V) × n × n_layers × n_heads × d_k
+mha_kv_gb  = 2 * 16384 * n_layers * n_heads * d_k * bytes_per_element / (1024**3)
+# MQA: 2 (K+V) × n × n_layers × 1 × d_k  (shared K,V)
+mqa_kv_gb  = 2 * 16384 * n_layers * 1      * d_k * bytes_per_element / (1024**3)
+gqa_groups = 8  # LLaMA-style: 32 Q heads → 8 groups
+gqa_kv_gb  = 2 * 16384 * n_layers * gqa_groups * d_k * bytes_per_element / (1024**3)
+
+print(f"  MHA  (32 KV heads):  {mha_kv_gb:.2f} GB")
+print(f"  GQA  ( 8 KV groups): {gqa_kv_gb:.2f} GB  ({mha_kv_gb/gqa_kv_gb:.1f}× smaller)")
+print(f"  MQA  ( 1 KV head):   {mqa_kv_gb:.2f} GB  ({mha_kv_gb/mqa_kv_gb:.0f}× smaller)")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "FlashAttention achieves its speedup over standard attention primarily by:",
+    options: [
+      "Approximating the softmax with a polynomial kernel to avoid the full n×n computation",
+      "Reducing the number of attention heads from h to h/2",
+      "Tiling computation to avoid materializing the full n×n attention matrix in GPU HBM",
+      "Using int8 quantization for the attention weights"
+    ],
+    correct: 2,
+    explanation: "FlashAttention computes exact (not approximate) attention. The speedup comes from an IO-aware algorithm: it tiles Q, K, V blocks to fit in fast on-chip SRAM and uses online softmax normalization, avoiding the O(n²) memory write to HBM. Memory bandwidth, not FLOPs, was the bottleneck."
+  },
+  {
+    question: "In Grouped Query Attention (GQA), how are the Key and Value projections shared?",
+    options: [
+      "All attention heads share a single K and V (same as Multi-Query Attention)",
+      "K and V are shared within groups of Q-heads; different groups have different K and V",
+      "K is shared across all heads but V remains per-head",
+      "K and V are shared only in the first half of transformer layers"
+    ],
+    correct: 1,
+    explanation: "GQA divides Q-heads into groups (e.g., 4 groups of 8 heads). Each group shares one set of K and V projections. This is a middle ground: MHA has 1 K/V per Q-head (n_heads total); MQA has 1 K/V for all heads; GQA has 1 K/V per group (n_groups << n_heads)."
+  },
+  {
+    question: "Which efficient attention method is the only one that computes mathematically exact (not approximate) attention?",
+    options: [
+      "Linformer",
+      "Performer",
+      "FlashAttention",
+      "Longformer"
+    ],
+    correct: 2,
+    explanation: "Linformer and Performer approximate the attention matrix (Linformer: low-rank projection; Performer: kernel feature maps). Longformer uses sparse patterns, skipping many exact dot products. FlashAttention computes all the same arithmetic as standard attention — it only changes the memory access pattern — producing bit-identical results."
+  }]
+```

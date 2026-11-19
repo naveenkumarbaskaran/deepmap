@@ -69,7 +69,7 @@ export function KnowledgeGraph({ onNodeClick, activeSlug }: KnowledgeGraphProps)
   );
 
   return (
-    <div className="w-full h-full" style={{ background: "var(--background)" }}>
+    <div style={{ width: "100%", height: "100%", minHeight: "400px", background: "var(--background)" }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}

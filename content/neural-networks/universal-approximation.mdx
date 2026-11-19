@@ -1,0 +1,118 @@
+---
+title: "Universal Approximation"
+track: "neural-networks"
+estimatedMinutes: 10
+description: "What the Universal Approximation Theorem says, what it doesn't say, and what it means for depth versus width in neural networks."
+---
+
+## The Core Claim
+
+The Universal Approximation Theorem (Cybenko 1989, Hornik 1991) states: a feedforward network with a single hidden layer of sufficient width and a non-polynomial activation function can approximate any continuous function on a compact domain to arbitrary precision.
+
+This is a remarkable theoretical result — it establishes that the architecture of a neural network is not the bottleneck. Any well-behaved function you want to represent, a neural network with one hidden layer can represent it, given enough neurons.
+
+## What the Theorem Proves
+
+Formally, for any continuous function `f: [0,1]ⁿ → ℝ` and any `ε > 0`, there exists a one-hidden-layer network `g` such that `|f(x) - g(x)| < ε` for all `x`. The activation function must be non-polynomial — this rules out networks that are purely linear, but covers sigmoid, tanh, ReLU, and virtually any activation used in practice.
+
+The theorem applies to width: you may need exponentially many neurons in a single hidden layer to approximate certain functions. Deeper networks can represent the same functions with far fewer total parameters.
+
+## What the Theorem Does Not Prove
+
+The theorem is an **existence result**. It tells you a network of that size *exists* — it says nothing about:
+
+- **Finding the weights.** Gradient descent is not guaranteed to converge to the universal approximator. The loss landscape may have poor local minima or saddle points.
+- **Generalization.** A network that approximates `f` on the training domain may fail entirely on new inputs. Approximation on a training set is not the same as learning the true function.
+- **Efficiency.** A single hidden layer may require vastly more neurons than a deep network. Depth provides a form of representational compression.
+- **Sample efficiency.** Even if the right network exists, finding it may require an impractical amount of training data.
+
+## Depth vs Width
+
+Subsequent expressivity research (Montufar et al. 2014, Raghu et al. 2017) showed that depth is exponentially more efficient than width for many functions. A deep network with ReLU activations can represent exponentially more linear regions of the input space than a shallow network of the same total parameter count. Each layer partitions the input space further, composing the partitions from previous layers.
+
+This does not mean shallow networks are useless — for small, low-dimensional problems they are entirely practical. It does explain why depth became the dominant design choice as tasks scaled.
+
+<NeuronDiagram animate />
+
+## Interactive Code
+
+```python runnable
+import numpy as np
+
+# Approximate sin(x) on [-pi, pi] with a manually-tuned shallow MLP.
+# Architecture: 1 input -> 8 hidden (tanh) -> 1 output
+
+np.random.seed(7)
+x = np.linspace(-np.pi, np.pi, 300)
+
+# Layer 1 weights: each hidden unit is a shifted/scaled sigmoid-like detector
+# Spread centers across the domain with varying widths
+centers = np.linspace(-np.pi, np.pi, 8)
+scale = 3.0
+W1 = scale * np.ones((8, 1))          # all units use same input weight
+b1 = -scale * centers.reshape(8, 1)   # bias shifts each unit to its center
+
+# Forward: hidden activations
+h = np.tanh(W1 @ x.reshape(1, -1) + b1)   # shape (8, 300)
+
+# Layer 2: fit output weights with least squares
+# h @ w2 ≈ sin(x)  =>  solve w2
+target = np.sin(x)
+W2, _, _, _ = np.linalg.lstsq(h.T, target, rcond=None)
+
+# Predict
+y_pred = W2 @ h
+
+# Measure approximation error
+mse = np.mean((y_pred - target) ** 2)
+max_err = np.max(np.abs(y_pred - target))
+
+print(f"Approximating sin(x) with 8 tanh units:")
+print(f"  MSE:        {mse:.6f}")
+print(f"  Max error:  {max_err:.4f}")
+print(f"  Perfect fit would have MSE=0, max_err=0")
+
+# Show a few sample points
+indices = [0, 50, 100, 150, 200, 250, 299]
+print("\\n  x       sin(x)   predicted   error")
+for i in indices:
+    print(f"  {x[i]:+.3f}   {target[i]:+.4f}   {y_pred[i]:+.6f}   {abs(y_pred[i]-target[i]):.4f}")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What does the Universal Approximation Theorem guarantee?",
+    options: [
+      "Gradient descent will find the optimal weights for any function",
+      "A single hidden layer network of sufficient width can approximate any continuous function arbitrarily closely",
+      "Deep networks always generalize better than shallow ones",
+      "Any function can be represented exactly with a finite number of ReLU units"
+    ],
+    correct: 1,
+    explanation: "The theorem is a pure existence result: for any continuous function and any error tolerance, a large enough one-hidden-layer network exists that meets the tolerance. It makes no claims about how to find that network, whether it generalizes, or whether it is efficient."
+  },
+  {
+    question: "Which of the following is NOT addressed by the Universal Approximation Theorem?",
+    options: [
+      "Whether a one-hidden-layer network can represent the target function",
+      "Whether non-polynomial activations are required",
+      "Whether gradient descent will converge to the approximating network",
+      "Whether the target function must be continuous"
+    ],
+    correct: 2,
+    explanation: "The theorem proves existence, not learnability. It says nothing about how to find the weights. Optimization, generalization, and sample efficiency are entirely separate questions that the theorem does not address."
+  },
+  {
+    question: "Why do deep networks offer a practical advantage over very wide shallow networks, even when the Universal Approximation Theorem applies to both?",
+    options: [
+      "Deep networks bypass the theorem entirely",
+      "Depth allows exponentially more linear regions to be represented with far fewer parameters",
+      "Shallow networks cannot use ReLU activations",
+      "Depth eliminates the need for bias terms"
+    ],
+    correct: 1,
+    explanation: "Expressivity research shows that depth composes partitions across layers, enabling a deep ReLU network to carve exponentially more linear regions in the input space than a shallow network with the same total parameters. The shallow network that approximates the same function may require an impractical number of neurons."
+  }]
+```

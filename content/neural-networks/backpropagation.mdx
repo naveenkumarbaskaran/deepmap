@@ -29,7 +29,8 @@ Each term is easy to compute individually. Backprop just chains them together ef
 
 ## In code
 
-<CodeRunner code={`import numpy as np
+```python runnable
+import numpy as np
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
@@ -60,12 +61,12 @@ print(f"Prediction: {y_hat:.4f}")
 print(f"Loss:       {loss:.4f}")
 print(f"Gradients:  {grad_w}")
 print(f"Updated w:  {w - 0.1 * grad_w}")
-`} />
+```
 
 ## Quick check
 
-<Quiz questions={[
-  {
+```quiz
+[{
     question: "What does the chain rule allow us to compute in backpropagation?",
     options: [
       "The forward pass output",
@@ -97,5 +98,5 @@ print(f"Updated w:  {w - 0.1 * grad_w}")
     ],
     correct: 1,
     explanation: "Numerical gradient estimation requires two forward passes per parameter (finite differences). Backprop computes all gradients in a single backward pass — O(1) passes vs O(n) for n parameters."
-  }
-]} />
+  }]
+```

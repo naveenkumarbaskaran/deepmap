@@ -1,0 +1,161 @@
+---
+title: "GANs"
+track: "llms-and-gen-ai"
+estimatedMinutes: 13
+description: "The minimax game between generator and discriminator, GAN training pathologies, Wasserstein GAN, conditional and style-based variants, and why GANs produce sharp but potentially low-diversity outputs."
+---
+
+## The Adversarial Framework
+
+A **Generative Adversarial Network** (Goodfellow et al., 2014) pits two networks against each other:
+
+- **Generator G**: maps random noise `z ~ p(z)` to synthetic data `G(z)`.
+- **Discriminator D**: classifies inputs as real (from the data distribution) or fake (from G).
+
+They play a **minimax game**: G tries to fool D; D tries not to be fooled. At the theoretical optimum, G produces samples indistinguishable from real data and D outputs 0.5 everywhere.
+
+<NeuronDiagram animate />
+
+## The Minimax Objective
+
+The original GAN value function is:
+
+```
+min_G max_D  E[log D(x)] + E[log(1 − D(G(z)))]
+```
+
+- D maximizes: assign high probability to real data, low to fakes.
+- G minimizes: make D assign high probability to its outputs.
+
+In practice, G minimizes `−E[log D(G(z))]` (non-saturating loss) instead — this gives stronger gradients early in training when D easily rejects G's outputs.
+
+## Training Instabilities
+
+GANs are notoriously difficult to train. The two main failure modes:
+
+**Mode collapse**: G learns to produce a narrow set of outputs that reliably fool D, ignoring most of the data distribution. D adapts; G shifts to another mode. The generator cycles rather than covering the full distribution.
+
+**Vanishing gradients**: When D is too strong early on, `D(G(z)) ≈ 0` everywhere. The gradient `∂log(1 − D(G(z)))/∂G` saturates — G receives nearly zero gradient and stops learning.
+
+Both stem from the KL/JS divergence embedded in the original GAN loss becoming poorly behaved when the real and fake distributions have little overlap.
+
+## Wasserstein GAN
+
+**WGAN** (Arjovsky et al., 2017) replaces the discriminator with a **critic** that estimates the Wasserstein (Earth Mover's) distance between distributions:
+
+```
+min_G max_{‖f‖_L ≤ 1}  E[f(x)] − E[f(G(z))]
+```
+
+The critic must be **1-Lipschitz** (enforced via weight clipping in WGAN or gradient penalty in WGAN-GP). Key benefits:
+- Provides meaningful gradients even when distributions are disjoint.
+- Critic score correlates with sample quality — a reliable training signal.
+- Significantly reduces mode collapse.
+
+## Conditional and Style-Based GANs
+
+**Conditional GAN (cGAN)**: both G and D receive a class label `y` as input. G generates class-specific samples; D judges realism *and* label consistency.
+
+**StyleGAN** (Karras et al., 2019): separates content and style. A mapping network transforms `z → w` (a disentangled style space). Adaptive Instance Normalization (AdaIN) injects style `w` at each resolution scale in a **progressive** generator (trained coarse-to-fine). This enables fine-grained control over style attributes at different spatial scales.
+
+## GANs vs Diffusion: Sharpness vs Diversity
+
+GANs produce sharper images than VAEs because the adversarial loss directly penalizes unrealistic textures. However:
+- Lower sample diversity (mode collapse risk).
+- Sensitive to hyperparameters and architecture choices.
+- No tractable likelihood.
+
+Diffusion models have largely superseded GANs on image generation benchmarks due to better coverage, stable training, and scalability — but GANs remain competitive for real-time synthesis due to single-pass inference.
+
+## GAN Loss Functions — Code
+
+```python runnable
+import numpy as np
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-np.clip(x, -500, 500)))
+
+def gan_discriminator_loss(real_logits, fake_logits):
+    """Standard minimax GAN loss for D (minimise = maximise original objective)."""
+    real_loss = -np.mean(np.log(sigmoid(real_logits) + 1e-8))
+    fake_loss = -np.mean(np.log(1 - sigmoid(fake_logits) + 1e-8))
+    return real_loss + fake_loss
+
+def gan_generator_loss_nonsaturating(fake_logits):
+    """Non-saturating G loss: minimise -log D(G(z)) instead of log(1-D(G(z)))."""
+    return -np.mean(np.log(sigmoid(fake_logits) + 1e-8))
+
+def wasserstein_discriminator_loss(real_scores, fake_scores):
+    """Wasserstein critic loss (critic = -D in the original paper notation)."""
+    return -(np.mean(real_scores) - np.mean(fake_scores))
+
+def wasserstein_generator_loss(fake_scores):
+    """Wasserstein G loss: minimise -E[f(G(z))]."""
+    return -np.mean(fake_scores)
+
+np.random.seed(42)
+batch = 16
+
+# Scenario 1: early training — D is weak
+real_logits_weak = np.random.randn(batch) * 0.5         # D uncertain on real
+fake_logits_weak = np.random.randn(batch) * 0.5         # D uncertain on fake
+
+# Scenario 2: D dominates — classic vanishing gradient trap
+real_logits_strong = np.random.randn(batch) + 3.0       # D very confident on real
+fake_logits_strong = np.random.randn(batch) - 3.0       # D very confident fake is fake
+
+print("=== Standard GAN Losses ===")
+for label, rl, fl in [("Weak D  ", real_logits_weak, fake_logits_weak),
+                       ("Strong D", real_logits_strong, fake_logits_strong)]:
+    d_loss = gan_discriminator_loss(rl, fl)
+    g_loss = gan_generator_loss_nonsaturating(fl)
+    print(f"  {label} | D loss: {d_loss:.4f} | G loss: {g_loss:.4f}")
+
+print("\\n=== Wasserstein GAN Losses ===")
+# WGAN uses raw scores (not logits → sigmoid), critic is Lipschitz-constrained
+real_scores = np.random.randn(batch) + 1.0
+fake_scores = np.random.randn(batch) - 1.0
+
+w_d = wasserstein_discriminator_loss(real_scores, fake_scores)
+w_g = wasserstein_generator_loss(fake_scores)
+wasserstein_distance = np.mean(real_scores) - np.mean(fake_scores)
+print(f"  Critic loss:            {w_d:.4f}")
+print(f"  Generator loss:         {w_g:.4f}")
+print(f"  Estimated W-distance:   {wasserstein_distance:.4f}")
+```
+
+```quiz
+[{
+    question: "What is mode collapse in GAN training?",
+    options: [
+      "The discriminator converges before the generator finishes training",
+      "The generator produces only a narrow subset of outputs, ignoring most of the data distribution",
+      "The generator loss saturates because the discriminator outputs exactly 0.5",
+      "Gradients explode in the discriminator due to unbounded scores"
+    ],
+    correct: 1,
+    explanation: "Mode collapse occurs when the generator finds a small set of outputs that reliably fool the discriminator and stops exploring the rest of the data distribution. The generator cycles between a few modes rather than covering the full target distribution."
+  },
+  {
+    question: "What key property must the Wasserstein GAN critic satisfy, and why?",
+    options: [
+      "It must be strictly convex, to ensure a unique Nash equilibrium",
+      "It must output probabilities in [0,1] via sigmoid, to match the original GAN formulation",
+      "It must be 1-Lipschitz, so the Wasserstein distance estimate remains well-defined and bounded",
+      "It must have more parameters than the generator, to prevent mode collapse"
+    ],
+    correct: 2,
+    explanation: "The Wasserstein distance is defined over 1-Lipschitz functions. If the critic is unconstrained, it can grow unboundedly and the estimate becomes invalid. WGAN enforces this via weight clipping; WGAN-GP uses a gradient penalty on interpolated samples."
+  },
+  {
+    question: "How does StyleGAN's mapping network contribute to controllable image generation?",
+    options: [
+      "It maps the latent z directly to pixel space, bypassing the generator",
+      "It transforms z into a disentangled style space w, used to inject style at each resolution via AdaIN",
+      "It trains a separate discriminator for each style attribute",
+      "It applies progressive resizing to the discriminator input during training"
+    ],
+    correct: 1,
+    explanation: "StyleGAN's mapping network (8 fully connected layers) transforms the entangled noise z into an intermediate latent space w with better disentanglement. AdaIN layers inject w at each scale of the progressive generator, giving separate control over coarse structure (pose, shape) and fine style (texture, color)."
+  }]
+```

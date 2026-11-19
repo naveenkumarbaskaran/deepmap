@@ -1,0 +1,132 @@
+---
+title: "Attention Mechanisms"
+track: "deep-learning"
+estimatedMinutes: 13
+description: "Learn how Bahdanau attention breaks the seq2seq bottleneck, understand the query/key/value framework, and implement scaled dot-product attention — the direct precursor to transformer self-attention."
+---
+
+## Breaking the Bottleneck
+
+Seq2Seq compresses the entire input into a single context vector. Bahdanau et al. (2015) showed a better approach: at each decoding step, let the decoder **attend** to all encoder hidden states simultaneously, computing a weighted sum that emphasizes the most relevant positions.
+
+Instead of one context vector for the whole sequence, the model creates a **dynamic context vector at every decoding step** — specifically tailored to what the decoder needs to generate next. For translating "Le chat noir", when generating "black" the decoder attends most strongly to the encoder state at "noir".
+
+## Query, Key, Value
+
+Modern attention is formalized as a **query/key/value** (QKV) system:
+
+- **Query (Q)**: what the current decoder position is looking for
+- **Keys (K)**: what each encoder position offers / "advertises"
+- **Values (V)**: the actual content to retrieve from each position
+
+**Alignment scores** measure how well a query matches each key. The scores are normalized with softmax into **attention weights** (summing to 1), then used to compute a weighted sum of the values. This weighted sum is the context vector for this step.
+
+## Scaled Dot-Product Attention
+
+The transformer formulation (Vaswani et al., 2017) computes alignment as dot products between queries and keys, scaled by `√d_k` to prevent softmax saturation in high dimensions:
+
+```
+Attention(Q, K, V) = softmax(Q·Kᵀ / √d_k) · V
+```
+
+The scaling factor matters: for large `d_k`, dot products grow in magnitude, pushing softmax into regions with near-zero gradients. Dividing by `√d_k` keeps gradients healthy.
+
+## Soft vs. Hard Attention
+
+**Soft attention** (what we've described) produces a smooth weighted average over all positions — differentiable end-to-end. **Hard attention** selects exactly one position, which is non-differentiable and requires reinforcement learning to train. Almost all modern architectures use soft attention.
+
+## From Seq2Seq Attention to Self-Attention
+
+In seq2seq attention, Q comes from the decoder and K, V come from the encoder — cross-sequence attention. In **self-attention** (transformers), Q, K, and V all come from the same sequence, allowing every position to attend to every other position in the same sequence. This is what makes transformers so powerful for language modeling.
+
+## Diagram
+
+<AttentionHeatmap animate />
+
+## Scaled Dot-Product Attention
+
+```python runnable
+import numpy as np
+
+def softmax(x, axis=-1):
+    e = np.exp(x - np.max(x, axis=axis, keepdims=True))
+    return e / e.sum(axis=axis, keepdims=True)
+
+def scaled_dot_product_attention(Q, K, V):
+    d_k = Q.shape[-1]
+    # Alignment scores: (seq_q, seq_k)
+    scores = Q @ K.T / np.sqrt(d_k)
+    # Attention weights via softmax
+    weights = softmax(scores, axis=-1)
+    # Weighted sum of values
+    output = weights @ V
+    return output, weights
+
+np.random.seed(0)
+
+# 4 encoder positions, d_k = 3, d_v = 4
+seq_len, d_k, d_v = 4, 3, 4
+
+K = np.random.randn(seq_len, d_k)   # keys from encoder
+V = np.random.randn(seq_len, d_v)   # values from encoder
+
+# Decoder query at one step (1 query vector)
+Q = np.random.randn(1, d_k)
+
+output, weights = scaled_dot_product_attention(Q, K, V)
+
+print("Query (what the decoder is looking for):")
+print(np.round(Q, 3))
+
+print("\\nAttention weights (sum to 1 across encoder positions):")
+print(np.round(weights, 4))
+print(f"Sum of weights: {weights.sum():.6f}")
+
+print("\\nContext vector (weighted sum of values):")
+print(np.round(output, 4))
+
+# Batch example: all 4 positions attend to each other (self-attention)
+print("\\n--- Self-attention: 4 positions attend to each other ---")
+Q2 = K.copy()   # queries = keys for self-attention demo
+out2, w2 = scaled_dot_product_attention(Q2, K, V)
+print("Attention weight matrix (4x4):")
+print(np.round(w2, 3))
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "Why is the dot-product divided by √d_k in scaled dot-product attention?",
+    options: [
+      "To ensure the output has unit norm",
+      "To prevent softmax from saturating when d_k is large, keeping gradients healthy",
+      "To normalize across the batch dimension",
+      "To match the magnitude of the value vectors"
+    ],
+    correct: 1,
+    explanation: "For large d_k, dot products grow in variance proportional to d_k, pushing softmax into near-zero gradient regions. Dividing by √d_k counteracts this, keeping the variance of scores roughly 1."
+  },
+  {
+    question: "In seq2seq attention, what do the Query, Key, and Value represent?",
+    options: [
+      "Q: encoder state, K: decoder state, V: embedding",
+      "Q: current decoder hidden state, K: encoder hidden states, V: encoder hidden states",
+      "Q: attention weights, K: context vector, V: output logits",
+      "All three come from the encoder"
+    ],
+    correct: 1,
+    explanation: "In seq2seq (cross) attention, the Query is the decoder's current state (what am I looking for?), and the Keys and Values are both from the encoder (what does each input position offer?)."
+  },
+  {
+    question: "What is the key difference between self-attention and seq2seq cross-attention?",
+    options: [
+      "Self-attention uses hard attention; cross-attention uses soft attention",
+      "Self-attention has no softmax step",
+      "In self-attention, Q, K, and V all come from the same sequence",
+      "Cross-attention can only attend to adjacent positions"
+    ],
+    correct: 2,
+    explanation: "In self-attention, queries, keys, and values are all derived from the same sequence. This lets every position directly attend to every other position in the same sequence, capturing intra-sequence dependencies."
+  }]
+```

@@ -1,0 +1,157 @@
+---
+title: "Variational Autoencoders"
+track: "llms-and-gen-ai"
+estimatedMinutes: 12
+description: "From plain autoencoders to VAEs — learn the reparameterization trick, the ELBO objective, latent space regularization, and why VAEs produce blurrier outputs than GANs."
+---
+
+## Autoencoders: Compression Without a Prior
+
+A plain autoencoder maps input `x` through an encoder to a latent code `z`, then reconstructs `x` via a decoder. The bottleneck forces the network to learn a compressed representation.
+
+The problem: the latent space is unstructured. Points between learned codes may decode to nonsense, so you cannot sample new data by drawing `z` from a simple distribution.
+
+## The VAE Fix: A Probabilistic Latent Space
+
+A **Variational Autoencoder** (Kingma & Welling, 2013) imposes a prior `p(z) = N(0, I)` on the latent space. Instead of encoding `x` to a single point `z`, the encoder outputs a **distribution** — a mean vector `μ` and log-variance `log σ²`:
+
+```
+z ~ q(z|x) = N(μ(x), σ²(x))
+```
+
+This forces the latent space to be smooth and continuous: nearby points in `z` decode to similar outputs, and sampling from `N(0,I)` reliably produces valid generations.
+
+<NeuronDiagram animate />
+
+## The Reparameterization Trick
+
+Sampling `z ~ N(μ, σ²)` is not differentiable — gradients cannot flow through a stochastic node. The trick: rewrite the sample as:
+
+```
+z = μ + ε · σ,   ε ~ N(0, I)
+```
+
+Now `ε` is an *external* random input, and `μ` and `σ` are deterministic functions of `x`. Gradients flow through `μ` and `σ` normally. This is the key enabler of end-to-end training.
+
+## The ELBO Objective
+
+Training maximizes the **Evidence Lower BOund (ELBO)**, which is a lower bound on the log-likelihood of the data:
+
+```
+ELBO = E[log p(x|z)] − KL(q(z|x) ‖ p(z))
+```
+
+The two terms balance competing goals:
+
+- **Reconstruction loss** `E[log p(x|z)]`: the decoder should reproduce `x` faithfully from `z`. With a Gaussian decoder this is proportional to MSE.
+- **KL divergence** `KL(q(z|x) ‖ N(0,I))`: the encoder's approximate posterior should stay close to the standard normal prior, keeping the latent space structured. For diagonal Gaussians it has a closed form:
+
+```
+KL = −½ · Σ(1 + log σ² − μ² − σ²)
+```
+
+Maximizing ELBO = minimizing reconstruction loss + KL divergence.
+
+## β-VAE and Disentanglement
+
+**β-VAE** (Higgins et al., 2017) upweights the KL term by a factor β > 1:
+
+```
+L = reconstruction_loss + β · KL
+```
+
+Higher β forces stronger independence between latent dimensions, promoting **disentangled representations** where each dimension controls a single interpretable factor (e.g., rotation, scale, color). The cost: higher β typically worsens reconstruction quality.
+
+## Why VAE Outputs Are Blurry
+
+The MSE reconstruction loss penalizes pixel-wise average error. When the model is uncertain about a pixel (e.g., fine texture), averaging multiple plausible values minimizes MSE but produces blurry output. GANs avoid this by using an adversarial loss that penalizes unrealistic textures directly — but at the cost of training instability. VAEs are stable, well-founded probabilistically, and excel as the compression backbone in latent diffusion models.
+
+## VAE ELBO — Code
+
+```python runnable
+import numpy as np
+
+def vae_elbo(x, x_recon, mu, log_var):
+    """
+    Compute VAE ELBO components.
+    x, x_recon: (batch, dim) arrays — original and reconstructed inputs
+    mu, log_var: (batch, latent_dim) — encoder outputs
+    Returns: total_loss, recon_loss, kl_loss (all positive; minimise total_loss)
+    """
+    batch = x.shape[0]
+
+    # Reconstruction loss: MSE averaged over dimensions, summed over batch
+    recon_loss = np.mean(np.sum((x - x_recon) ** 2, axis=1))
+
+    # KL divergence: -0.5 * sum(1 + log_var - mu^2 - exp(log_var))
+    # Closed form for q(z|x) = N(mu, diag(exp(log_var))) vs N(0,I)
+    kl_per_sample = -0.5 * np.sum(1 + log_var - mu**2 - np.exp(log_var), axis=1)
+    kl_loss = np.mean(kl_per_sample)
+
+    total_loss = recon_loss + kl_loss
+    return total_loss, recon_loss, kl_loss
+
+# --- Simulate a small batch ---
+np.random.seed(0)
+batch_size, input_dim, latent_dim = 8, 16, 4
+
+x        = np.random.randn(batch_size, input_dim)       # original inputs
+mu       = np.random.randn(batch_size, latent_dim) * 0.5
+log_var  = np.random.randn(batch_size, latent_dim) * 0.5
+
+# Reparameterize: z = mu + eps * sigma
+eps      = np.random.randn(batch_size, latent_dim)
+sigma    = np.exp(0.5 * log_var)
+z        = mu + eps * sigma                              # differentiable sample
+
+# Toy decoder: linear projection back to input space
+W_dec    = np.random.randn(latent_dim, input_dim) * 0.3
+x_recon  = z @ W_dec
+
+total, recon, kl = vae_elbo(x, x_recon, mu, log_var)
+print(f"ELBO components (to minimise):")
+print(f"  Reconstruction loss (MSE): {recon:.4f}")
+print(f"  KL divergence:             {kl:.4f}")
+print(f"  Total ELBO loss:           {total:.4f}")
+
+# Show effect of beta weighting
+print("\\nEffect of beta on total loss:")
+for beta in [0.1, 0.5, 1.0, 2.0, 4.0]:
+    print(f"  beta={beta:.1f}  =>  loss = {recon + beta*kl:.4f}")
+```
+
+```quiz
+[{
+    question: "What problem does the reparameterization trick solve in VAE training?",
+    options: [
+      "It prevents the KL divergence from becoming too large",
+      "It makes the sampling step differentiable so gradients can flow through it",
+      "It forces the latent space to be exactly Gaussian",
+      "It speeds up decoding by bypassing the sampling step"
+    ],
+    correct: 1,
+    explanation: "Sampling z ~ N(μ, σ²) is a stochastic operation that blocks gradient flow. The trick rewrites z = μ + ε·σ with ε ~ N(0,I) as an external input, making μ and σ deterministic — and therefore differentiable — functions that can receive gradients normally."
+  },
+  {
+    question: "In the ELBO, what does the KL divergence term encourage?",
+    options: [
+      "The decoder to minimize pixel-wise reconstruction error",
+      "The encoder to produce latent distributions close to the standard normal prior",
+      "The latent dimensions to encode disentangled factors of variation",
+      "The model to generate sharp, high-frequency image details"
+    ],
+    correct: 1,
+    explanation: "The KL term KL(q(z|x) ‖ N(0,I)) penalizes the encoder's approximate posterior for deviating from the standard normal prior. This regularizes the latent space: it stays smooth, continuous, and can be sampled from at generation time."
+  },
+  {
+    question: "Why do VAEs tend to produce blurrier images than GANs?",
+    options: [
+      "VAEs use fewer parameters in the decoder",
+      "VAEs cannot model multi-modal distributions in latent space",
+      "The MSE reconstruction loss averages over plausible pixel values, washing out fine detail",
+      "VAEs apply dropout in the latent space during training"
+    ],
+    correct: 2,
+    explanation: "MSE minimization penalizes the mean squared error averaged over all plausible reconstructions. When a pixel could be one of several values (e.g., fine texture), the minimum MSE solution is the average — which appears blurry. GANs use an adversarial critic that directly penalizes unrealistic textures."
+  }]
+```

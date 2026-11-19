@@ -1,0 +1,155 @@
+---
+title: "RLHF & DPO"
+track: "llms-and-gen-ai"
+estimatedMinutes: 14
+description: "Understand how RLHF trains a reward model from human preferences and uses PPO to align LLM outputs, and how DPO achieves the same goal with a simpler direct loss."
+---
+
+## Why Alignment Beyond SFT?
+
+Supervised Fine-Tuning teaches a model to imitate demonstrations. But human preferences are often easier to express as comparisons — "this response is better than that one" — than as explicit demonstrations. RLHF and DPO exploit this signal to push the model toward outputs humans actually prefer: helpful, harmless, and honest.
+
+## The RLHF Pipeline
+
+RLHF (Reinforcement Learning from Human Feedback) has three stages:
+
+**Stage 1 — SFT:** Fine-tune the base model on instruction demonstrations to produce the SFT model (the starting policy).
+
+**Stage 2 — Reward Model:** Collect human preference data: show raters two completions for the same prompt and ask which is better. Train a separate reward model (RM) on these (chosen, rejected) pairs using a Bradley-Terry ranking loss:
+
+```
+L_RM = -log σ(r(x, y_chosen) - r(x, y_rejected))
+```
+
+**Stage 3 — PPO:** Use Proximal Policy Optimization to maximize expected reward while staying close to the SFT policy via a KL divergence penalty:
+
+```
+maximize: E[r(x, y)] - β · KL(π_θ || π_SFT)
+```
+
+The KL term prevents **reward hacking** — without it, the model learns to exploit the reward model's blind spots (e.g., outputting nonsense that the RM rates highly).
+
+## Why RLHF Is Complex
+
+RLHF requires training three separate models (SFT, RM, policy), running PPO rollouts which are slow and memory-intensive, tuning the KL coefficient β carefully, and monitoring for reward hacking and distribution drift. It is powerful but operationally demanding.
+
+<TransformerBlock animate />
+
+## DPO — Direct Preference Optimization
+
+DPO (Rafailov et al., 2023) sidesteps the reward model entirely. It derives a closed-form relationship between the optimal policy and the reward function, and reparameterizes the RLHF objective directly in terms of the policy log-probabilities:
+
+```
+L_DPO = -log σ( β · (log π_θ(y_w|x) - log π_ref(y_w|x))
+                - β · (log π_θ(y_l|x) - log π_ref(y_l|x)) )
+```
+
+Where:
+- `y_w` = preferred (chosen) completion
+- `y_l` = dispreferred (rejected) completion
+- `π_θ` = current policy being trained
+- `π_ref` = frozen reference policy (the SFT model)
+- `β` = temperature controlling deviation from reference
+
+Intuitively, DPO increases the relative log-probability of chosen completions over rejected ones, anchored by how much the reference model already preferred them. No PPO, no separate reward model.
+
+## RLHF vs DPO
+
+| Dimension | RLHF | DPO |
+|---|---|---|
+| Reward model | Explicit, trained separately | Implicit, folded into policy loss |
+| Training stability | PPO rollouts, tricky to tune | Standard supervised training |
+| Compute | High (3 models + rollouts) | Low (1 model + reference) |
+| Reward hacking risk | Yes | Lower (no separate RM to hack) |
+| Data requirement | Preference pairs + RM data | Preference pairs only |
+
+## DPO Loss — Numpy Implementation
+
+```python runnable
+import numpy as np
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+def dpo_loss(log_pi_chosen, log_pi_ref_chosen,
+             log_pi_rejected, log_pi_ref_rejected,
+             beta=0.1):
+    """
+    DPO loss for a single (chosen, rejected) preference pair.
+    
+    log_pi_chosen:    log P(y_w | x) under the policy being trained
+    log_pi_ref_chosen: log P(y_w | x) under the frozen reference model
+    log_pi_rejected:  log P(y_l | x) under the policy being trained
+    log_pi_ref_rejected: log P(y_l | x) under the frozen reference model
+    beta: KL regularization strength
+    """
+    # Implicit reward difference: how much more the policy prefers chosen over rejected
+    # relative to the reference model
+    chosen_reward   = beta * (log_pi_chosen   - log_pi_ref_chosen)
+    rejected_reward = beta * (log_pi_rejected - log_pi_ref_rejected)
+    
+    logit = chosen_reward - rejected_reward
+    loss = -np.log(sigmoid(logit))
+    return loss, chosen_reward, rejected_reward
+
+# Example: 3 preference pairs
+print("DPO loss on preference pairs (beta=0.1):")
+print(f"{'Pair':<6} {'log π(y_w)':<12} {'log π(y_l)':<12} {'Loss':<10} {'r(y_w)':<10} {'r(y_l)':<10}")
+print("-" * 62)
+
+pairs = [
+    # (log_pi_chosen, log_pi_ref_chosen, log_pi_rejected, log_pi_ref_rejected)
+    # Pair 1: Policy strongly prefers chosen — good, low loss
+    (-2.0, -3.0, -4.0, -3.0, "policy prefers chosen"),
+    # Pair 2: Policy prefers rejected over chosen — bad, high loss  
+    (-4.0, -3.0, -2.0, -3.0, "policy prefers rejected"),
+    # Pair 3: Policy is neutral, same as reference
+    (-3.0, -3.0, -3.0, -3.0, "policy equals reference"),
+]
+
+for i, (lpc, lprc, lpr, lprr, desc) in enumerate(pairs):
+    loss, r_w, r_l = dpo_loss(lpc, lprc, lpr, lprr)
+    print(f"P{i+1:<5} {lpc:<12.1f} {lpr:<12.1f} {loss:<10.4f} {r_w:<10.4f} {r_l:<10.4f}  ({desc})")
+
+print()
+print("Key insight: DPO loss is lowest when the policy assigns")
+print("higher relative probability to chosen vs rejected completions.")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What is the role of the KL divergence penalty in RLHF?",
+    options: [
+      "It speeds up PPO convergence by normalizing gradients",
+      "It prevents the policy from drifting too far from the SFT model, reducing reward hacking",
+      "It replaces the reward model during stage 3",
+      "It computes the preference loss between chosen and rejected completions"
+    ],
+    correct: 1,
+    explanation: "Without the KL term, the policy can exploit weaknesses in the reward model and produce degenerate outputs that score highly but are not actually useful. The KL penalty β·KL(π_θ||π_SFT) keeps the policy close to the SFT model."
+  },
+  {
+    question: "What key simplification does DPO make compared to RLHF?",
+    options: [
+      "DPO uses fewer preference pairs",
+      "DPO eliminates the need for a separate reward model by directly optimizing on preference pairs",
+      "DPO fine-tunes only the last layer of the transformer",
+      "DPO replaces human preferences with synthetic data"
+    ],
+    correct: 1,
+    explanation: "DPO reparameterizes the RLHF objective to express reward implicitly through the policy's log-probabilities relative to a reference model. No separate RM needs to be trained, making DPO a standard supervised loss."
+  },
+  {
+    question: "In the DPO loss, what does the reference model π_ref represent?",
+    options: [
+      "A randomly initialized model used as a baseline",
+      "The reward model from RLHF stage 2",
+      "The frozen SFT model that anchors the KL regularization",
+      "The final aligned model after DPO training"
+    ],
+    correct: 2,
+    explanation: "π_ref is the frozen SFT model (the starting policy). DPO measures how much the trained policy deviates from it on chosen vs rejected completions, acting as an implicit KL constraint without running PPO."
+  }]
+```

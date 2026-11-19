@@ -1,0 +1,136 @@
+---
+title: "Matrix Calculus"
+track: "mathematics"
+estimatedMinutes: 13
+description: "Derivatives of matrix expressions — the actual math behind computing dL/dW in neural networks"
+---
+
+## Why Matrix Calculus?
+
+Scalar calculus gives you `d/dx f(x)`. Neural networks work with matrices and vectors — weights W, activations a, losses L. When you compute the gradient `∂L/∂W`, you're doing matrix calculus. Understanding it means you can derive backpropagation from first principles, debug gradient explosions, and implement custom layers correctly.
+
+## The Layout Convention
+
+Before anything, fix your convention: when differentiating a scalar `f` with respect to a column vector `x ∈ ℝⁿ`, the gradient `∂f/∂x` is a column vector of the same shape as `x`. This is the **denominator layout** (also called Jacobian layout). NumPy and PyTorch use this convention.
+
+## Derivative of a Linear Form
+
+The simplest case: `f(x) = wᵀx` (dot product, a scalar).
+
+`∂(wᵀx)/∂x = w`
+
+Intuition: `wᵀx = Σ wᵢxᵢ`. The partial with respect to `xᵢ` is `wᵢ`. Stack them into a vector: you get `w`.
+
+## Derivative of a Matrix-Vector Product
+
+For `y = Wx` where `W ∈ ℝᵐˣⁿ`, `x ∈ ℝⁿ`, `y ∈ ℝᵐ`:
+
+`∂y/∂x = W`   (Jacobian: m × n matrix)
+
+If we have a scalar loss `L = f(y)` and use the chain rule:
+
+`∂L/∂x = Wᵀ · (∂L/∂y)`
+
+This is exactly why the backward pass through a linear layer multiplies the upstream gradient by `Wᵀ`.
+
+## Gradient with Respect to the Weight Matrix
+
+For `y = Wx`, the gradient of a scalar loss `L` with respect to `W`:
+
+`∂L/∂W = (∂L/∂y) · xᵀ`
+
+This is an outer product — a rank-1 matrix. For a mini-batch, this sums over examples. This formula is the core of backpropagation through any linear layer.
+
+## Quadratic Forms
+
+For `f(x) = xᵀAx` where `A` is symmetric:
+
+`∂f/∂x = 2Ax`
+
+For non-symmetric `A`: `∂(xᵀAx)/∂x = (A + Aᵀ)x`. When `A = I` this gives `2x`, and you recover the gradient of L2 norm squared.
+
+## The Jacobian Matrix
+
+For a vector-valued function `f: ℝⁿ → ℝᵐ`, the **Jacobian** is:
+
+`J = ∂f/∂x ∈ ℝᵐˣⁿ`   where `Jᵢⱼ = ∂fᵢ/∂xⱼ`
+
+The Jacobian of a softmax layer is non-trivial because outputs are coupled (they sum to 1). Computing it correctly is essential for the backward pass through softmax.
+
+## Chain Rule in Matrix Form
+
+For composed functions `L = f(g(x))`:
+
+`∂L/∂x = (∂g/∂x)ᵀ · (∂L/∂g)`
+
+Each layer in a network contributes a Jacobian factor. Backpropagation is the efficient left-to-right application of this product using the already-computed upstream gradients.
+
+<NeuronDiagram animate />
+
+```python runnable
+import numpy as np
+
+rng = np.random.default_rng(7)
+
+# --- Linear layer: forward + backward by hand ---
+batch, n_in, n_out = 4, 3, 2
+X = rng.normal(0, 1, (batch, n_in))    # (B, n_in)
+W = rng.normal(0, 1, (n_in, n_out))    # (n_in, n_out)
+b = np.zeros(n_out)
+
+# Forward pass
+Y = X @ W + b          # (B, n_out)
+
+# Fake upstream gradient (dL/dY from next layer)
+dL_dY = rng.normal(0, 1, Y.shape)   # (B, n_out)
+
+# Backward pass — matrix calculus
+dL_dW = X.T @ dL_dY          # (n_in, n_out)
+dL_db = dL_dY.sum(axis=0)    # (n_out,)
+dL_dX = dL_dY @ W.T          # (B, n_in)
+
+print("Shapes:")
+print(f"  X:      {X.shape}")
+print(f"  W:      {W.shape}")
+print(f"  Y=XW+b: {Y.shape}")
+print(f"  dL/dW:  {dL_dW.shape}  (outer product, summed over batch)")
+print(f"  dL/dX:  {dL_dX.shape}  (W.T @ upstream gradient)")
+
+# --- Verify with numerical gradients ---
+def loss(W_flat):
+    W_ = W_flat.reshape(n_in, n_out)
+    Y_ = X @ W_ + b
+    return (Y_ * dL_dY).sum()   # linear loss for clean comparison
+
+h = 1e-5
+grad_numerical = np.zeros_like(W)
+for i in range(n_in):
+    for j in range(n_out):
+        dw = np.zeros_like(W); dw[i, j] = h
+        grad_numerical[i, j] = (loss((W+dw).ravel()) - loss((W-dw).ravel())) / (2*h)
+
+print(f"\\nAnalytic vs numerical gradient match: "
+      f"{np.allclose(dL_dW, grad_numerical, atol=1e-5)}")
+print(f"Max absolute error: {np.abs(dL_dW - grad_numerical).max():.2e}")
+```
+
+```quiz
+[{
+    question: "In backpropagation through a linear layer Y = XW, the gradient of the loss with respect to W is:",
+    options: ["W · dL/dY", "Xᵀ · dL/dY", "dL/dY · Xᵀ", "X · W · dL/dY"],
+    correct: 1,
+    explanation: "∂L/∂W = Xᵀ · (∂L/∂Y). This is an outer product between the input X and the upstream gradient. It has the same shape as W, as required for a gradient step."
+  },
+  {
+    question: "Why does the backward pass through a linear layer Y = Wx multiply the upstream gradient by Wᵀ (not W)?",
+    options: ["To preserve gradient magnitude", "Because the Jacobian ∂y/∂x = W, so the chain rule gives Wᵀ · upstream gradient", "It is a convention only", "To match the shape of the bias term"],
+    correct: 1,
+    explanation: "The Jacobian of y = Wx with respect to x is W (an m×n matrix). The chain rule for a scalar loss gives ∂L/∂x = Wᵀ·(∂L/∂y), which transposes W to map from output gradient space back to input space."
+  },
+  {
+    question: "What is ∂(xᵀAx)/∂x when A is a symmetric matrix?",
+    options: ["Ax", "xᵀA", "2Ax", "A + Aᵀ"],
+    correct: 2,
+    explanation: "For symmetric A, ∂(xᵀAx)/∂x = 2Ax. When A = I this gives the gradient of ||x||² = 2x, confirming the formula. For non-symmetric A the result is (A + Aᵀ)x."
+  }]
+```

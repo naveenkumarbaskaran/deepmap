@@ -52,20 +52,22 @@ export default function HomePage() {
             justifyContent: "center",
             textAlign: "center",
             padding: "0 24px",
+            background: "radial-gradient(ellipse at center, rgba(10,10,15,0.5) 0%, rgba(10,10,15,0.15) 70%)",
           }}
         >
           <div
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-6"
-            style={{ background: "#6366f120", border: "1px solid #6366f140", color: "#a5b4fc" }}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: "8px",
+              padding: "6px 12px", borderRadius: "9999px", fontSize: "0.75rem",
+              fontWeight: 500, marginBottom: "24px",
+              background: "#6366f120", border: "1px solid #6366f140", color: "#a5b4fc"
+            }}
           >
             <span>✦</span>
             <span>{NODES.length} lessons · {totalHours}+ hours · {TRACKS.length} tracks</span>
           </div>
 
-          <h1
-            className="text-5xl sm:text-7xl font-black tracking-tight mb-6"
-            style={{ color: "var(--foreground)", lineHeight: 1.05 }}
-          >
+          <h1 style={{ fontSize: "clamp(2.5rem, 7vw, 5rem)", fontWeight: 900, lineHeight: 1.05, marginBottom: "24px", color: "var(--foreground)" }}>
             Learn AI the way
             <br />
             <span style={{ background: "linear-gradient(135deg, #6366f1, #06b6d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
@@ -73,15 +75,20 @@ export default function HomePage() {
             </span>
           </h1>
 
-          <p className="text-lg sm:text-xl max-w-2xl mb-10" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
+          <p style={{ fontSize: "1.125rem", maxWidth: "600px", marginBottom: "40px", color: "var(--muted)", lineHeight: 1.6 }}>
             A knowledge graph of AI — not a linear course. 50 topics across 6 tracks. Run Python in your browser. No login needed.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap", justifyContent: "center" }}>
             <Link
               href="/learn"
-              className="px-8 py-3.5 rounded-xl text-base font-bold text-white transition-all hover:scale-105"
-              style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5)", boxShadow: "0 0 30px #6366f130" }}
+              style={{
+                padding: "14px 32px", borderRadius: "12px", fontSize: "1rem",
+                fontWeight: 700, color: "white", textDecoration: "none",
+                background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                boxShadow: "0 0 30px #6366f150",
+                display: "inline-block",
+              }}
             >
               Explore the Map →
             </Link>
@@ -89,8 +96,12 @@ export default function HomePage() {
               href="https://github.com/naveenkumarbaskaran/deepmap"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-8 py-3.5 rounded-xl text-base font-semibold transition-all hover:opacity-80"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+              style={{
+                padding: "14px 32px", borderRadius: "12px", fontSize: "1rem",
+                fontWeight: 600, color: "#e2e8f0", textDecoration: "none",
+                background: "rgba(17,17,24,0.8)", border: "1px solid rgba(255,255,255,0.1)",
+                display: "inline-block",
+              }}
             >
               GitHub →
             </a>
@@ -99,14 +110,14 @@ export default function HomePage() {
       </section>
 
       {/* Track cards */}
-      <section className="px-6 py-20 max-w-6xl mx-auto">
-        <h2 className="text-3xl font-bold text-center mb-3" style={{ color: "var(--foreground)" }}>
+      <section style={{ padding: "80px 24px", maxWidth: "1152px", margin: "0 auto" }}>
+        <h2 style={{ fontSize: "1.875rem", fontWeight: 700, textAlign: "center", marginBottom: "12px", color: "var(--foreground)" }}>
           6 Tracks. {NODES.length} Lessons.
         </h2>
-        <p className="text-center mb-12" style={{ color: "var(--muted)" }}>
+        <p style={{ textAlign: "center", marginBottom: "48px", color: "var(--muted)" }}>
           Each track builds on the last. Each lesson has a visual explanation, runnable code, and a quiz.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" }}>
           {TRACKS.map((track) => {
             const trackNodes = NODES.filter((n) => n.track === track.id);
             const mins = trackNodes.reduce((s, n) => s + n.estimatedMinutes, 0);
@@ -114,26 +125,29 @@ export default function HomePage() {
               <Link
                 key={track.id}
                 href="/learn"
-                className="group rounded-2xl p-6 transition-all hover:scale-[1.02]"
-                style={{ background: "var(--surface)", border: `1px solid ${track.color}30` }}
+                style={{
+                  borderRadius: "16px", padding: "24px", textDecoration: "none", display: "block",
+                  background: "var(--surface)", border: `1px solid ${track.color}30`,
+                  transition: "transform 0.15s ease, box-shadow 0.15s ease",
+                }}
               >
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: `${track.color}20` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
+                  <div style={{ width: "40px", height: "40px", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.25rem", background: `${track.color}20`, flexShrink: 0 }}>
                     {track.emoji}
                   </div>
                   <div>
-                    <div className="font-bold text-sm" style={{ color: "var(--foreground)" }}>{track.label}</div>
-                    <div className="text-xs" style={{ color: "var(--muted)" }}>{trackNodes.length} lessons · ~{Math.round(mins / 60)}h</div>
+                    <div style={{ fontWeight: 700, fontSize: "0.875rem", color: "var(--foreground)" }}>{track.label}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{trackNodes.length} lessons · ~{Math.round(mins / 60)}h</div>
                   </div>
                 </div>
-                <p className="text-sm mb-4" style={{ color: "var(--muted)", lineHeight: 1.5 }}>{track.description}</p>
-                <div className="flex flex-wrap gap-1.5">
+                <p style={{ fontSize: "0.875rem", marginBottom: "16px", color: "var(--muted)", lineHeight: 1.5 }}>{track.description}</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                   {trackNodes.slice(0, 3).map((n) => (
-                    <span key={n.slug} className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${track.color}15`, color: track.color, border: `1px solid ${track.color}30` }}>
+                    <span key={n.slug} style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: "9999px", background: `${track.color}15`, color: track.color, border: `1px solid ${track.color}30` }}>
                       {n.label}
                     </span>
                   ))}
-                  {trackNodes.length > 3 && <span className="text-xs px-2 py-0.5 rounded-full" style={{ color: "var(--muted)" }}>+{trackNodes.length - 3} more</span>}
+                  {trackNodes.length > 3 && <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: "9999px", color: "var(--muted)" }}>+{trackNodes.length - 3} more</span>}
                 </div>
               </Link>
             );
@@ -142,19 +156,19 @@ export default function HomePage() {
       </section>
 
       {/* How it works */}
-      <section className="px-6 py-20" style={{ background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-12" style={{ color: "var(--foreground)" }}>How it works</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+      <section style={{ padding: "80px 24px", background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
+        <div style={{ maxWidth: "896px", margin: "0 auto" }}>
+          <h2 style={{ fontSize: "1.875rem", fontWeight: 700, textAlign: "center", marginBottom: "48px", color: "var(--foreground)" }}>How it works</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "32px" }}>
             {[
               { emoji: "🗺", title: "Explore the graph", desc: "Browse 50 topics on an interactive map. See how concepts connect. Click any node to open the lesson." },
               { emoji: "💻", title: "Run the code", desc: "Every lesson has editable Python that runs in your browser — no setup, no installs, powered by Pyodide." },
               { emoji: "🧪", title: "Test yourself", desc: "Short quizzes after each concept. Instant feedback. Progress saved locally — no login needed." },
             ].map((item) => (
-              <div key={item.title} className="text-center">
-                <div className="text-4xl mb-4">{item.emoji}</div>
-                <h3 className="font-bold mb-2" style={{ color: "var(--foreground)" }}>{item.title}</h3>
-                <p className="text-sm" style={{ color: "var(--muted)", lineHeight: 1.6 }}>{item.desc}</p>
+              <div key={item.title} style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "2.5rem", marginBottom: "16px" }}>{item.emoji}</div>
+                <h3 style={{ fontWeight: 700, marginBottom: "8px", color: "var(--foreground)" }}>{item.title}</h3>
+                <p style={{ fontSize: "0.875rem", color: "var(--muted)", lineHeight: 1.6 }}>{item.desc}</p>
               </div>
             ))}
           </div>
@@ -162,9 +176,9 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="px-6 py-8 text-center text-sm" style={{ borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
+      <footer style={{ padding: "32px 24px", textAlign: "center", fontSize: "0.875rem", borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
         Built by{" "}
-        <a href="https://github.com/naveenkumarbaskaran" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity" style={{ color: "#6366f1" }}>
+        <a href="https://github.com/naveenkumarbaskaran" target="_blank" rel="noopener noreferrer" style={{ color: "#6366f1", textDecoration: "none" }}>
           Naveen Kumar Baskaran
         </a>
         {" "}· Open source

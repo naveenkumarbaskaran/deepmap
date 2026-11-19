@@ -1,0 +1,140 @@
+---
+title: "Multi-Agent Systems"
+track: "agents"
+estimatedMinutes: 13
+description: "Why single agents have limits, and how orchestrator-subagent patterns, parallelism, specialization, and consensus protocols make complex tasks tractable."
+---
+
+## Why One Agent Isn't Enough
+
+A single LLM agent faces hard constraints: a finite context window, sequential execution, a single point of failure, and no internal specialization. For long-horizon tasks — a full codebase audit, a multi-source research report, a software release pipeline — these limits become blockers.
+
+Multi-agent systems solve this by decomposing work across **specialized, parallel agents** coordinated by explicit protocols.
+
+Three core motivations:
+
+- **Parallelism** — independent subtasks run simultaneously, cutting wall-clock time
+- **Specialization** — each agent has a focused prompt, tools, and context tuned for one job
+- **Verification** — a second agent reviewing the first catches errors that self-review misses
+
+## Orchestrator-Subagent Pattern
+
+The most common topology: one **orchestrator** decomposes a task and fans out to **subagents**, then aggregates results.
+
+```
+User → Orchestrator
+         ├── SubagentA (search)     → result_A
+         ├── SubagentB (code gen)   → result_B
+         └── SubagentC (verify)     → result_C
+         ↓
+      Synthesize → Response
+```
+
+The orchestrator does not execute domain work — it plans, delegates, and judges. Subagents are stateless workers: they receive a scoped task, return a result, and have no memory of prior calls.
+
+This maps directly to Claude's multi-agent support: Claude can act as orchestrator (spawning agents via the Agent tool) or as a subagent (receiving a task via its system prompt from another model).
+
+## Communication Protocols
+
+**Fan-out / aggregation** — orchestrator sends the same or different prompts to N agents, collects results, merges. Best for parallelizable tasks with no interdependency.
+
+**Pipeline** — output of agent A becomes input to agent B. Best for sequential refinement (draft → critique → revise).
+
+**Debate / consensus** — agents score or vote on options independently, then aggregate. Reduces single-model bias; useful for factual verification, code review, and decision-making.
+
+**Peer-to-peer (A2A)** — agents communicate directly without a central orchestrator. Flexible but harder to debug and audit.
+
+## Trust and Verification Between Agents
+
+Agent-to-agent communication introduces a trust problem: a subagent's output is only as reliable as its own reasoning and tools. Best practices:
+
+1. **Never grant a subagent more permissions than it needs** — scope tool access per agent
+2. **Treat subagent output as untrusted input** — the orchestrator should validate, not blindly relay
+3. **Log the full trajectory** — every agent call and result, for auditability
+4. **Prompt injection risk** — a malicious tool result could hijack a subagent; sanitize external content before it reaches agent context
+
+<TransformerBlock animate />
+
+## Multi-Agent Consensus Simulation
+
+```python runnable
+import numpy as np
+
+np.random.seed(7)
+
+# 3 agents independently score 5 candidate options (0-1 scale)
+# Agents have different reliability (confidence weights)
+
+n_agents = 3
+n_options = 5
+agent_names = ["Researcher", "Critic", "Synthesizer"]
+option_labels = [f"Option {chr(65+i)}" for i in range(n_options)]
+
+# Simulated raw scores from each agent
+scores = np.array([
+    [0.82, 0.45, 0.91, 0.33, 0.67],  # Researcher
+    [0.78, 0.50, 0.88, 0.41, 0.60],  # Critic
+    [0.85, 0.40, 0.95, 0.28, 0.72],  # Synthesizer
+])
+
+# Agent reliability weights (Synthesizer most trusted)
+weights = np.array([0.30, 0.25, 0.45])
+
+# Weighted aggregation
+weighted_scores = (scores * weights[:, np.newaxis]).sum(axis=0)
+
+# Agreement: std across agents per option (lower = more agreement)
+agreement = scores.std(axis=0)
+
+print("Individual agent scores:")
+print(f"  {'Option':<12}", end="")
+for name in agent_names:
+    print(f"{name:>12}", end="")
+print(f"{'Weighted':>12}  {'Std Dev':>8}")
+print("-" * 72)
+for i, label in enumerate(option_labels):
+    print(f"  {label:<12}", end="")
+    for a in range(n_agents):
+        print(f"{scores[a, i]:>12.2f}", end="")
+    print(f"{weighted_scores[i]:>12.2f}  {agreement[i]:>8.3f}")
+
+best = np.argmax(weighted_scores)
+print(f"\\nConsensus pick: {option_labels[best]} "
+      f"(score={weighted_scores[best]:.2f}, agent std={agreement[best]:.3f})")
+```
+
+```quiz
+[{
+    question: "In the orchestrator-subagent pattern, what is the orchestrator's primary role?",
+    options: [
+      "Executing domain tasks directly using specialized tools",
+      "Planning, delegating tasks, and aggregating subagent results",
+      "Acting as a router that forwards prompts unchanged",
+      "Storing memory across all subagent sessions"
+    ],
+    correct: 1,
+    explanation: "The orchestrator decomposes the high-level task, delegates scoped subtasks to subagents, and synthesizes their results. It does not perform domain work itself — that is the subagents' job."
+  },
+  {
+    question: "Why is a debate/consensus pattern useful in multi-agent systems?",
+    options: [
+      "It reduces total token usage by sharing a single context",
+      "It eliminates the need for an orchestrator",
+      "It reduces single-model bias by aggregating independent judgments",
+      "It allows agents to run on different hardware"
+    ],
+    correct: 2,
+    explanation: "When multiple agents score options independently and results are aggregated, individual model biases and errors are averaged out. This is especially valuable for factual verification and high-stakes decisions."
+  },
+  {
+    question: "What is the primary trust risk when an orchestrator relays tool output to a subagent?",
+    options: [
+      "The subagent may exceed its token limit",
+      "Malicious content in tool output could hijack the subagent via prompt injection",
+      "The orchestrator's context window grows too large",
+      "Subagents cannot parse JSON tool results"
+    ],
+    correct: 1,
+    explanation: "External tool results (web pages, database rows, API responses) may contain adversarial text designed to override the agent's instructions — a prompt injection attack. Sanitizing or summarizing external content before passing it to agents mitigates this."
+  }]
+```

@@ -1,0 +1,130 @@
+---
+title: "BERT"
+track: "transformers"
+estimatedMinutes: 12
+description: "Understand BERT's bidirectional encoder pre-training — Masked Language Modeling, Next Sentence Prediction, fine-tuning on downstream tasks, and the BERT family of variants."
+---
+
+## What Makes BERT Different
+
+BERT (Devlin et al., 2018) is a **bidirectional encoder-only transformer**. Unlike GPT's left-to-right causal language model, BERT can attend to both past and future tokens at every layer. This bidirectionality gives much richer contextual representations for tasks where the full input is available at inference time (classification, NER, question answering).
+
+The trade-off: BERT cannot autoregressively generate text — it has no causal mask and no decoder.
+
+## Pre-Training Objective 1: Masked Language Modeling (MLM)
+
+BERT is pre-trained by randomly masking 15% of input tokens and training the model to predict the original tokens. For each selected token:
+- 80% of the time: replace with `[MASK]`
+- 10% of the time: replace with a random token
+- 10% of the time: keep the original token unchanged
+
+The 10%+10% rule prevents the model from only learning to handle `[MASK]` tokens and ensures representations remain useful for unmasked tokens too — an important detail for fine-tuning, where `[MASK]` never appears.
+
+The model predicts the masked token at the corresponding position using a linear head over the vocabulary, trained with cross-entropy loss.
+
+## Pre-Training Objective 2: Next Sentence Prediction (NSP)
+
+BERT also trains on a binary classification task: given two sentences A and B, predict whether B follows A in the original corpus. 50% of training pairs are real consecutive sentences; 50% are random pairs.
+
+NSP teaches the model inter-sentence coherence. Later work (RoBERTa) found NSP provides marginal benefit and removed it — but it makes BERT directly useful for sentence-pair tasks.
+
+## Fine-Tuning
+
+BERT is fine-tuned end-to-end by adding a lightweight task head on top of the `[CLS]` token (for sequence classification) or token positions (for token classification like NER, or QA span extraction). All weights are updated with a small learning rate (2e-5 to 5e-5) for 2–4 epochs on task-specific data.
+
+This "pre-train then fine-tune" paradigm established the dominant paradigm in NLP for the following years.
+
+<TransformerBlock animate />
+
+## BERT Variants
+
+**RoBERTa** (Liu et al., 2019): BERT trained longer, with more data, larger batches, without NSP, and with dynamic masking (re-mask each epoch). Consistently outperforms BERT.
+
+**DistilBERT**: 60% size, 97% performance via knowledge distillation from BERT. Used when inference speed matters.
+
+**ALBERT**: Parameter-sharing across layers + factored embedding reduces parameters by 18× while maintaining quality. Good for memory-constrained deployments.
+
+## Simulating MLM Masking in NumPy
+
+```python runnable
+import numpy as np
+
+np.random.seed(99)
+
+# Simulate a tokenized sentence (token IDs, 0=PAD, 1=MASK, 2+=real tokens)
+sentence_len = 12
+vocab_size = 1000
+MASK_ID = 1
+tokens = np.random.randint(2, vocab_size, size=sentence_len)
+print("Original tokens:", tokens)
+
+def apply_mlm_masking(tokens, mask_prob=0.15):
+    masked = tokens.copy()
+    labels = np.full(len(tokens), -100)   # -100 = ignore in loss
+    
+    for i in range(len(tokens)):
+        if np.random.random() < mask_prob:
+            labels[i] = tokens[i]          # save true label
+            r = np.random.random()
+            if r < 0.80:
+                masked[i] = MASK_ID        # 80%: replace with [MASK]
+            elif r < 0.90:
+                masked[i] = np.random.randint(2, vocab_size)  # 10%: random
+            # else: keep original (10%)
+    return masked, labels
+
+masked_tokens, labels = apply_mlm_masking(tokens)
+
+print("\\nMasked tokens (1 = [MASK]):", masked_tokens)
+print("Labels (-100 = not masked): ", labels)
+
+n_masked = (labels != -100).sum()
+print(f"\\nTokens masked: {n_masked}/{sentence_len} = {n_masked/sentence_len:.0%}")
+
+# Show which positions were selected and what strategy was used
+print("\\nMasked positions:")
+for i in range(sentence_len):
+    if labels[i] != -100:
+        strategy = "[MASK]" if masked_tokens[i] == MASK_ID \
+                   else "random" if masked_tokens[i] != tokens[i] \
+                   else "unchanged"
+        print(f"  pos {i}: original={tokens[i]}, input={masked_tokens[i]}, strategy={strategy}")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "In BERT's MLM objective, why are 10% of selected tokens replaced with a random token (instead of always using [MASK])?",
+    options: [
+      "To increase the difficulty of the task and prevent overfitting",
+      "To ensure the model builds useful representations for non-[MASK] tokens, since [MASK] never appears at fine-tuning",
+      "To match the token distribution in the pre-training corpus",
+      "Because the [MASK] token was not part of the original vocabulary"
+    ],
+    correct: 1,
+    explanation: "If the model only ever needed to handle [MASK] tokens during pre-training, it might learn to ignore non-[MASK] positions. By occasionally replacing with random tokens (10%) or keeping the original (10%), BERT is forced to build good representations for every token position — crucial for fine-tuning where [MASK] doesn't appear."
+  },
+  {
+    question: "Which architectural property makes BERT unsuitable for autoregressive text generation?",
+    options: [
+      "Its encoder-only architecture with bidirectional attention — no causal mask",
+      "Its use of absolute positional embeddings instead of RoPE",
+      "Its NSP pre-training objective which conditions on two sentences",
+      "Its token vocabulary which doesn't include generation-specific tokens"
+    ],
+    correct: 0,
+    explanation: "BERT uses bidirectional self-attention — every token can attend to every other token simultaneously. For autoregressive generation, each token must only attend to previous tokens (causal masking). BERT has no decoder stack and no causal mask, making sequential token generation impractical."
+  },
+  {
+    question: "RoBERTa improves on BERT primarily by:",
+    options: [
+      "Adding more transformer layers and attention heads",
+      "Switching to a decoder-only architecture like GPT",
+      "Training longer with more data, larger batches, without NSP, and dynamic masking",
+      "Using a different optimizer (Adam → Adafactor)"
+    ],
+    correct: 2,
+    explanation: "RoBERTa makes no architectural changes — it uses the same BERT architecture. Performance gains come from training choices: 10× more data, much larger batch sizes, no NSP loss, and dynamic masking (generating new mask patterns each epoch instead of reusing static masks)."
+  }]
+```

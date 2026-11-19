@@ -1,0 +1,166 @@
+---
+title: "Agent Evaluation"
+track: "agents"
+estimatedMinutes: 11
+description: "Why evaluating agents is fundamentally harder than evaluating single-turn LLMs, and how trajectory eval, LLM-as-judge, tool-call accuracy, and benchmark harnesses address the challenge."
+---
+
+## Why Agent Eval Is Hard
+
+Evaluating a single-turn LLM response is tractable: compare output to a reference, run a rubric, measure BLEU or exact match. Agent evaluation is fundamentally different:
+
+- **Non-determinism** — the same task can succeed via many different tool sequences
+- **Long horizons** — a task may involve 20+ steps; errors compound across the trajectory
+- **Tool call correctness** — was the right tool called with the right arguments? The final answer may be correct even with a flawed trajectory, or wrong despite a sensible one
+- **Partial credit** — an agent that gets 8 of 10 subtasks right is not equivalent to one that gets 0
+
+## Trajectory Eval vs Outcome Eval
+
+**Outcome evaluation** asks: did the agent reach the correct final state? Simple to define, but blind to *how* — a lucky shortcut scores the same as principled reasoning.
+
+**Trajectory evaluation** audits every step: were the right tools called, in a sensible order, with correct parameters? Did the agent handle errors gracefully? Did it avoid unnecessary tool calls?
+
+Best practice: use both. Outcome eval catches regressions quickly; trajectory eval catches quality degradation that outcome metrics miss.
+
+## LLM-as-Judge
+
+For subjective or open-ended tasks, there is no ground truth. **LLM-as-judge** uses a model to score another model's output against a rubric.
+
+A typical rubric:
+- **Correctness** — does the answer match the ground truth or accepted reference?
+- **Groundedness** — are claims supported by retrieved evidence?
+- **Tool efficiency** — did the agent avoid redundant tool calls?
+- **Instruction following** — did the agent respect format and scope constraints?
+- **Coherence** — is the final response internally consistent?
+
+LLM-as-judge is fast and scalable, but judges have their own biases (verbosity bias, self-preference). Mitigations: use multiple judges, use a different model family for judging than generating, and check inter-rater agreement.
+
+## Tool-Call Accuracy and Task Completion Rate
+
+**Tool-call accuracy** — the fraction of tool calls in the trajectory where (a) the right tool was selected and (b) the arguments were valid. Computed against golden trajectories from human annotators.
+
+**Task completion rate (TCR)** — the fraction of tasks where the agent reaches a correct terminal state. The primary headline metric for agent benchmarks.
+
+## Benchmarks
+
+| Benchmark | Focus |
+|---|---|
+| **GAIA** | General assistant tasks requiring web, code, and file tools |
+| **SWE-bench** | Real GitHub issues requiring code edits that pass test suites |
+| **AgentBench** | 8 environments: OS, DB, web, game, tools, code, knowledge |
+| **τ-bench** | Tool-augmented reasoning across domains |
+
+Benchmark scores are proxies — always evaluate on tasks representative of your actual deployment.
+
+## Building Eval Harnesses
+
+A production eval harness needs:
+1. **Golden trajectories** — human-verified step-by-step solutions for a representative task set
+2. **Deterministic environment** — mock or sandboxed tools so tool call results are reproducible
+3. **Automatic scoring** — outcome check + trajectory diff against golden
+4. **Regression suite** — a fixed set of tasks that must pass before every deploy
+
+<TransformerBlock animate />
+
+## LLM-as-Judge Score Aggregation with Inter-Rater Agreement
+
+```python runnable
+import numpy as np
+
+np.random.seed(21)
+
+# 3 LLM judges score 1 agent response across 5 rubric criteria.
+# Criteria weights reflect importance.
+# Compute: per-judge total, weighted final score, and Cohen's kappa
+# approximation (pairwise observed vs chance agreement).
+
+criteria     = ["Correctness", "Groundedness", "Tool Efficiency",
+                "Instruction Follow", "Coherence"]
+weights      = np.array([0.35, 0.25, 0.15, 0.15, 0.10])
+judge_names  = ["Judge-A", "Judge-B", "Judge-C"]
+
+# Scores on 0-5 scale (discretized to integers for kappa)
+raw_scores = np.array([
+    [5, 4, 3, 5, 4],  # Judge-A
+    [4, 4, 3, 4, 5],  # Judge-B
+    [5, 3, 4, 5, 4],  # Judge-C
+])
+
+# Normalize to 0-1
+scores = raw_scores / 5.0
+
+# Weighted score per judge
+judge_totals = (scores * weights).sum(axis=1)
+
+# Final consensus: mean across judges
+final_score = judge_totals.mean()
+
+print("Per-criterion scores (0-5):")
+print(f"  {'Criterion':<22}", end="")
+for j in judge_names:
+    print(f"{j:>10}", end="")
+print(f"  {'Wt':>5}")
+print("-" * 60)
+for i, crit in enumerate(criteria):
+    print(f"  {crit:<22}", end="")
+    for j in range(3):
+        print(f"{raw_scores[j, i]:>10}", end="")
+    print(f"  {weights[i]:>5.0%}")
+
+print(f"\\nWeighted totals: {dict(zip(judge_names, judge_totals.round(3)))}")
+print(f"Final consensus score: {final_score:.3f} / 1.000")
+
+# Cohen's kappa approximation (pairwise, binarized at threshold 0.7)
+threshold = 0.7
+binary = (scores >= threshold).astype(int)  # shape: 3 judges x 5 criteria
+
+kappas = []
+for j1 in range(3):
+    for j2 in range(j1+1, 3):
+        p_o = (binary[j1] == binary[j2]).mean()  # observed agreement
+        p_e = (binary[j1].mean() * binary[j2].mean() +
+               (1-binary[j1].mean()) * (1-binary[j2].mean()))  # chance
+        kappa = (p_o - p_e) / (1 - p_e + 1e-9)
+        kappas.append(kappa)
+        pair = f"{judge_names[j1]} vs {judge_names[j2]}"
+        print(f"  Kappa {pair}: {kappa:.3f}")
+
+print(f"Mean kappa: {np.mean(kappas):.3f}  "
+      f"({'Good agreement' if np.mean(kappas) > 0.6 else 'Moderate agreement'})")
+```
+
+```quiz
+[{
+    question: "Why is outcome evaluation alone insufficient for agent quality assessment?",
+    options: [
+      "Outcome evaluation cannot handle multi-turn conversations",
+      "A correct final answer can mask a flawed or inefficient trajectory that may fail on slightly different inputs",
+      "Outcome evaluation requires human annotators for every task",
+      "LLMs cannot reliably determine if a final answer is correct"
+    ],
+    correct: 1,
+    explanation: "An agent can reach the right answer via lucky shortcuts, excessive tool calls, or brittle reasoning that happens to work for one input. Trajectory evaluation audits the intermediate steps, catching quality issues that outcome metrics miss."
+  },
+  {
+    question: "What is 'verbosity bias' in LLM-as-judge evaluation?",
+    options: [
+      "The tendency of LLM judges to prefer shorter responses",
+      "The tendency of LLM judges to give higher scores to longer, more elaborate responses regardless of quality",
+      "The tendency of agents to produce unnecessarily long tool call chains",
+      "A bug in rubric design that penalizes concise answers"
+    ],
+    correct: 1,
+    explanation: "LLM judges have been shown to systematically prefer longer responses, even when shorter ones are more accurate and appropriate. Mitigations include explicit rubric criteria for conciseness and using multiple judges from different model families."
+  },
+  {
+    question: "What distinguishes SWE-bench from other agent benchmarks?",
+    options: [
+      "It evaluates agents in a simulated game environment",
+      "It measures response latency across 1,000 API calls",
+      "It uses real GitHub issues where success is verified by passing actual test suites",
+      "It is the only benchmark that supports multi-agent evaluation"
+    ],
+    correct: 2,
+    explanation: "SWE-bench uses real GitHub issues from popular Python repositories. The agent must produce code edits that make failing tests pass — a concrete, verifiable outcome that cannot be gamed by producing plausible-sounding but incorrect patches."
+  }]
+```

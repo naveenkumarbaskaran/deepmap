@@ -1,0 +1,138 @@
+---
+title: "Transformer Architecture"
+track: "transformers"
+estimatedMinutes: 15
+description: "Walk through the full encoder-decoder transformer from 'Attention Is All You Need' — block structure, residual connections, layer norm, FFN expansion, and how encoder and decoder interact."
+---
+
+## The Full Picture
+
+The original transformer (Vaswani et al., 2017) is an encoder-decoder model designed for sequence-to-sequence tasks (translation, summarization). Both the encoder and decoder are stacks of identical blocks, but their internal attention patterns differ.
+
+**Encoder stack:** N identical blocks, each with bidirectional self-attention (all tokens attend to all). Takes the source sequence and produces contextual representations.
+
+**Decoder stack:** N identical blocks, each with *three* sublayers:
+1. Masked self-attention (causal — attends to previous decoder outputs only)
+2. Cross-attention (attends to encoder output — the "read source" step)
+3. Feed-forward network
+
+**Output:** The final decoder layer feeds into a linear projection to vocabulary size, then softmax to get next-token probabilities.
+
+## Inside a Single Block
+
+Each sublayer (attention or FFN) is wrapped in an **Add & Norm** pattern:
+
+```
+output = LayerNorm(x + Sublayer(x))
+```
+
+The residual connection `x + ...` ensures gradients flow directly from output to input, enabling training of deep networks (6, 12, 24+ layers). Layer normalization stabilizes activations.
+
+## Pre-Norm vs. Post-Norm
+
+**Post-norm** (original paper): LayerNorm applied after the residual addition. Can be unstable early in training with large learning rates.
+
+**Pre-norm** (modern default, used in GPT-3, LLaMA): LayerNorm applied to the input *before* the sublayer. More stable training, often requires no learning rate warmup. Most post-2020 models use pre-norm.
+
+## Feed-Forward Network
+
+The FFN in each block is a simple two-layer MLP applied position-wise (independently to each token):
+
+```
+FFN(x) = max(0, x W_1 + b_1) W_2 + b_2
+```
+
+The inner dimension is `4 × d_model` (the expansion ratio). For GPT-2 (d_model=768), this is 3072. For GPT-3 (d_model=12288), this is 49152. The FFN accounts for roughly two-thirds of a transformer's parameters; it is widely understood to store factual knowledge in its weights.
+
+## Token Embeddings and Output Projection
+
+Input tokens are mapped to d_model-dimensional vectors via a learned embedding table (vocabulary size × d_model). The same weight matrix is often **tied** with the output projection (d_model → vocabulary) to reduce parameters and improve generalization.
+
+<TransformerBlock animate />
+
+## Encoder Block Forward Pass in NumPy
+
+```python runnable
+import numpy as np
+
+np.random.seed(7)
+n, d_model, h, d_ff = 4, 8, 2, 32  # small dims for demonstration
+d_k = d_model // h
+
+def softmax(x):
+    e = np.exp(x - x.max(axis=-1, keepdims=True))
+    return e / e.sum(axis=-1, keepdims=True)
+
+def layer_norm(x, eps=1e-6):
+    mean = x.mean(-1, keepdims=True)
+    std  = x.std(-1, keepdims=True)
+    return (x - mean) / (std + eps)
+
+def multi_head_attn(x, Wq, Wk, Wv, Wo):
+    heads = []
+    for i in range(h):
+        Q = x @ Wq[i]; K = x @ Wk[i]; V = x @ Wv[i]
+        a = softmax(Q @ K.T / np.sqrt(d_k)) @ V
+        heads.append(a)
+    return np.concatenate(heads, axis=-1) @ Wo
+
+def ffn(x, W1, b1, W2, b2):
+    return np.maximum(0, x @ W1 + b1) @ W2 + b2  # ReLU activation
+
+# Random weights (would be learned in practice)
+Wq = [np.random.randn(d_model, d_k)*0.1 for _ in range(h)]
+Wk = [np.random.randn(d_model, d_k)*0.1 for _ in range(h)]
+Wv = [np.random.randn(d_model, d_k)*0.1 for _ in range(h)]
+Wo = np.random.randn(d_model, d_model)*0.1
+W1 = np.random.randn(d_model, d_ff)*0.1; b1 = np.zeros(d_ff)
+W2 = np.random.randn(d_ff, d_model)*0.1; b2 = np.zeros(d_model)
+
+# Input: 4 tokens
+x = np.random.randn(n, d_model)
+print("Input shape:", x.shape)
+
+# Sublayer 1: Multi-head attention + residual + layer norm
+attn_out = multi_head_attn(x, Wq, Wk, Wv, Wo)
+x = layer_norm(x + attn_out)       # Add & Norm
+print("After attention + Add&Norm:", x.shape)
+
+# Sublayer 2: FFN + residual + layer norm
+ffn_out = ffn(x, W1, b1, W2, b2)
+x = layer_norm(x + ffn_out)        # Add & Norm
+print("After FFN + Add&Norm:", x.shape)
+print("\\nFinal encoder block output (first token):")
+print(np.round(x[0], 3))
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What is the expansion ratio of the Feed-Forward Network within a standard transformer block?",
+    options: ["2×", "4×", "8×", "16×"],
+    correct: 1,
+    explanation: "The FFN expands the d_model-dimensional input to 4 × d_model in the hidden layer, then projects back down. For d_model=512, the inner FFN dimension is 2048. This 4× ratio is standard from the original paper and most subsequent models."
+  },
+  {
+    question: "In the original post-norm transformer, where is LayerNorm applied?",
+    options: [
+      "Before each sublayer (pre-norm)",
+      "After the residual addition (post-norm)",
+      "Only before the final output projection",
+      "Only in the decoder, not the encoder"
+    ],
+    correct: 1,
+    explanation: "Post-norm applies LayerNorm to the sum of the input and sublayer output: LayerNorm(x + Sublayer(x)). Modern models (GPT-3, LLaMA) switched to pre-norm — LayerNorm(x) is passed into Sublayer — for more stable training."
+  },
+  {
+    question: "Why is the token embedding weight matrix often 'tied' with the output projection?",
+    options: [
+      "To ensure the output probabilities sum to exactly 1",
+      "To reduce parameters and regularize — both map between token ids and d_model vectors",
+      "Because the embedding table is too large to store separately",
+      "To allow the model to attend to its own output embedding"
+    ],
+    correct: 1,
+    explanation: "The input embedding (vocab → d_model) and output projection (d_model → vocab) perform inverse operations on the same token-meaning space. Tying them reduces total parameters by vocab_size × d_model, provides implicit regularization, and tends to improve perplexity at no cost."
+  }]
+```

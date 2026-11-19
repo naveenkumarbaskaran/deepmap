@@ -1,0 +1,119 @@
+---
+title: "Transfer Learning"
+track: "deep-learning"
+estimatedMinutes: 11
+description: "Learn how pre-training on large datasets transfers knowledge to small-data tasks, when to freeze vs. fine-tune layers, and how to avoid catastrophic forgetting."
+---
+
+## The Core Idea
+
+Training a deep network from scratch requires millions of labeled examples and days of GPU compute. Most real-world tasks have hundreds or thousands of examples — far too few. **Transfer learning** reuses knowledge from a model trained on a large source task (e.g., ImageNet classification or next-token prediction) and adapts it to a smaller target task.
+
+The intuition: early layers in a vision network learn general-purpose features — edges, textures, colors. These are useful for almost any visual task. Only the final layers specialize in the source task's specific classes. By reusing the general-purpose layers, we dramatically reduce the data and compute needed for the target task.
+
+## Two Transfer Strategies
+
+**Feature extraction**: freeze all pretrained layers (do not update their weights). Add a new head (classifier) on top and train only that head. Fast, cheap, works well when source and target domains are similar and training data is small.
+
+**Full fine-tuning**: initialize from pretrained weights, then update all layers with a small learning rate. Allows the model to adapt more deeply to the target domain. Requires more data and time, but often achieves better accuracy when the target domain differs from the source.
+
+A common middle ground: freeze early (general) layers, fine-tune later (task-specific) layers, retrain the head.
+
+## Domain Adaptation
+
+Transfer works best when source and target domains are similar. ImageNet → medical imaging is a moderate domain shift; the network's color and texture detectors still apply. Code pretrained on English prose → SQL queries is a larger shift. For large domain gaps, more layers need to be fine-tuned.
+
+## Catastrophic Forgetting
+
+If you fine-tune aggressively on a small dataset, the network can overwrite its pretrained general-purpose representations, losing the generalization it had. This is **catastrophic forgetting**. Mitigations include: very small learning rate for pretrained layers, **L2 regularization toward pretrained weights** (Elastic Weight Consolidation), and **gradual unfreezing** (fine-tune one layer at a time from the head backward).
+
+## NLP: BERT Pre-training
+
+BERT pre-trains on two objectives: masked language modeling (predict randomly masked tokens) and next-sentence prediction, using 3.3 billion words. Fine-tuning BERT on a new NLP task requires only thousands of labeled examples and minutes of training. The same pre-trained weights serve as the starting point for dozens of different downstream tasks.
+
+## Diagram
+
+<NeuronDiagram animate />
+
+## Simulating Frozen vs. Fine-tuned Layers
+
+```python runnable
+import numpy as np
+
+np.random.seed(1)
+
+# Simulate a 3-layer network's parameter groups
+# Each layer: weight matrix + bias
+layer_shapes = [(8, 4), (6, 8), (3, 6)]  # (out, in) for layers 1-3
+
+# Initialize pretrained weights
+layers = [{"W": np.random.randn(*s) * 0.1, "b": np.zeros(s[0])} for s in layer_shapes]
+
+# Decide freeze policy: freeze layers 0 and 1, fine-tune layer 2 only
+frozen = [True, True, False]
+
+# Simulate a gradient update step (random gradients for illustration)
+lr = 0.01
+print("Layer  | Frozen | Params | Updated?")
+print("-------|--------|--------|----------")
+total_frozen = 0
+total_updated = 0
+
+for i, (layer, is_frozen) in enumerate(zip(layers, frozen)):
+    n_params = layer["W"].size + layer["b"].size
+    if is_frozen:
+        # No gradient computed or applied
+        total_frozen += n_params
+        print(f"  {i+1}    |  YES   | {n_params:5d} | No update — weights locked")
+    else:
+        # Simulate gradient step
+        grad_W = np.random.randn(*layer["W"].shape) * 0.05
+        grad_b = np.random.randn(*layer["b"].shape) * 0.05
+        layer["W"] -= lr * grad_W
+        layer["b"] -= lr * grad_b
+        total_updated += n_params
+        print(f"  {i+1}    |  NO    | {n_params:5d} | Updated with lr={lr}")
+
+print()
+print(f"Frozen parameters  : {total_frozen}")
+print(f"Trainable parameters: {total_updated}")
+print(f"Reduction vs. full fine-tune: {total_frozen/(total_frozen+total_updated)*100:.1f}% fewer updates")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "When should you prefer feature extraction over full fine-tuning?",
+    options: [
+      "When you have a large target dataset and ample compute",
+      "When the source and target domains are very different",
+      "When the target dataset is small and the source/target domains are similar",
+      "When you want to maximize final accuracy regardless of cost"
+    ],
+    correct: 2,
+    explanation: "Feature extraction (frozen backbone, only train the head) is best when target data is scarce and domains are similar — there is not enough data to fine-tune all layers without overfitting."
+  },
+  {
+    question: "What is catastrophic forgetting in the context of transfer learning?",
+    options: [
+      "The pretrained model refusing to converge on the new task",
+      "Fine-tuning destroying the general-purpose representations learned during pre-training",
+      "The model memorizing training data instead of generalizing",
+      "Gradient explosion during the first epoch of fine-tuning"
+    ],
+    correct: 1,
+    explanation: "Aggressive fine-tuning on a small dataset can overwrite pretrained general features, leaving the model no better (or worse) than training from scratch. Using a small learning rate and gradual unfreezing helps prevent this."
+  },
+  {
+    question: "Why does BERT need far less fine-tuning data than training from scratch?",
+    options: [
+      "BERT uses a smaller vocabulary, reducing the problem size",
+      "BERT pre-training already learned rich linguistic representations from billions of words",
+      "BERT architecturally prevents overfitting on small datasets",
+      "Fine-tuning uses a different loss function that requires less data"
+    ],
+    correct: 1,
+    explanation: "BERT's pre-training on billions of words produces general language representations (syntax, semantics, world knowledge). Fine-tuning adapts these for a specific task with minimal data, since most of the hard learning was already done."
+  }]
+```

@@ -1,0 +1,144 @@
+---
+title: "MCP & A2A"
+track: "agents"
+estimatedMinutes: 12
+description: "Model Context Protocol as the open standard for plug-and-play AI tool ecosystems, the MCP server/client architecture, and Agent-to-Agent (A2A) communication patterns."
+---
+
+## The Tool Fragmentation Problem
+
+Before MCP, every AI application reimplemented the same integrations: custom connectors to databases, APIs, file systems, code runners. Each new tool required new glue code, new auth handling, new schemas. Tool ecosystems were siloed.
+
+**Model Context Protocol (MCP)**, introduced by Anthropic in 2024, is an open standard that separates tool *providers* from tool *consumers* — any MCP-compatible client (Claude, Cursor, any agent framework) can connect to any MCP server without custom integration work.
+
+## MCP Architecture
+
+MCP follows a **client-server model**:
+
+```
+AI Application (host)
+  └── MCP Client
+        ├── MCP Server A  (file system tools)
+        ├── MCP Server B  (database tools)
+        └── MCP Server C  (web search tools)
+```
+
+The **host** is the AI application (e.g. Claude Code). The **MCP client** manages connections. Each **MCP server** is a lightweight process that exposes capabilities over a standard protocol (JSON-RPC over stdio or HTTP+SSE).
+
+MCP servers expose three primitive types:
+
+| Primitive | Description | Example |
+|---|---|---|
+| **Resources** | Data the model can read | A file, a DB row, an API response |
+| **Tools** | Actions the model can invoke | `run_query`, `write_file`, `search_web` |
+| **Prompts** | Reusable prompt templates | A code review template, a summarization format |
+
+## Why MCP Matters
+
+**Decoupling** — a team builds one MCP server for their internal database. Every AI tool in the org can use it immediately, with no per-tool integration.
+
+**Security** — the server enforces its own access controls. The model never receives raw credentials; it calls a tool and gets back only what the server permits.
+
+**Composability** — an agent can connect to 10 MCP servers simultaneously, each specializing in a different domain. The combined tool surface equals the sum of all servers.
+
+## Agent-to-Agent (A2A) Protocol
+
+MCP connects agents to *data and tools*. **A2A** connects agents to *other agents*.
+
+A2A defines how one agent calls another as a first-class capability — not just an HTTP call, but with shared schemas for task delegation, result streaming, trust assertion, and capability negotiation.
+
+Key A2A concepts:
+- **Agent Card** — a machine-readable description of what an agent can do (like a tool definition, but for an agent)
+- **Task** — a structured work unit passed from caller to callee agent, with inputs, expected output format, and timeout
+- **Trust chain** — the calling agent asserts its identity; the callee can verify and scope its response accordingly
+
+Together, MCP + A2A provide the full connectivity layer for multi-agent systems: agents connect to tools via MCP, and to each other via A2A.
+
+<TransformerBlock animate />
+
+## MCP Tool Selection via Cosine Similarity
+
+```python runnable
+import numpy as np
+
+np.random.seed(11)
+
+# Simulate MCP tool selection:
+# Given a task embedding, rank available tools by cosine similarity
+# to their description embeddings.
+
+def cosine_sim(a, b):
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9)
+
+# 6-dimensional embedding space (simplified)
+dim = 6
+
+tools = [
+    "read_file",
+    "write_file",
+    "search_web",
+    "run_sql_query",
+    "send_email",
+    "list_directory",
+]
+
+# Simulated tool description embeddings (unit-normalized)
+def rand_unit(seed):
+    np.random.seed(seed)
+    v = np.random.randn(dim)
+    return v / np.linalg.norm(v)
+
+tool_embeddings = np.array([rand_unit(s) for s in range(len(tools))])
+
+# Task: "find the latest sales figures from the database"
+# This should be closest to run_sql_query
+task_embedding = tool_embeddings[3] * 0.9 + rand_unit(99) * 0.1
+task_embedding /= np.linalg.norm(task_embedding)
+
+# Compute similarities
+sims = np.array([cosine_sim(task_embedding, te) for te in tool_embeddings])
+ranked = np.argsort(-sims)
+
+print("Task: 'find the latest sales figures from the database'")
+print(f"\\n{'Rank':<6} {'Tool':<20} {'Cosine Similarity':>18}")
+print("-" * 46)
+for rank, idx in enumerate(ranked, 1):
+    marker = " ◀ selected" if rank == 1 else ""
+    print(f"{rank:<6} {tools[idx]:<20} {sims[idx]:>18.4f}{marker}")
+```
+
+```quiz
+[{
+    question: "What are the three primitive types that MCP servers expose?",
+    options: [
+      "Models, Agents, Prompts",
+      "Resources, Tools, Prompts",
+      "Tools, Schemas, Endpoints",
+      "Connectors, Actions, Templates"
+    ],
+    correct: 1,
+    explanation: "MCP servers expose Resources (data the model can read), Tools (actions the model can invoke), and Prompts (reusable prompt templates). These three primitives cover the full surface of what an AI application needs from an external system."
+  },
+  {
+    question: "What problem does the Agent Card solve in A2A communication?",
+    options: [
+      "It stores the agent's conversation history between sessions",
+      "It encrypts messages between agents",
+      "It provides a machine-readable description of what an agent can do, enabling capability discovery",
+      "It maps agent tool calls to MCP server endpoints"
+    ],
+    correct: 2,
+    explanation: "An Agent Card is the A2A equivalent of an MCP tool definition — a structured description of an agent's capabilities, input/output schemas, and constraints. Calling agents use it to decide whether to delegate a task to that agent."
+  },
+  {
+    question: "Why does MCP improve security compared to direct credential passing?",
+    options: [
+      "MCP encrypts all data in transit using TLS by default",
+      "MCP servers enforce their own access controls so the model never receives raw credentials",
+      "MCP requires OAuth2 for all tool calls",
+      "The AI model inspects and validates credentials before using them"
+    ],
+    correct: 1,
+    explanation: "With MCP, the model calls a tool on the server — it never sees the underlying database password, API key, or access token. The server holds the credentials and enforces access policy, returning only the permitted result."
+  }]
+```

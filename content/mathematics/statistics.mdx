@@ -1,0 +1,118 @@
+---
+title: "Statistics"
+track: "mathematics"
+estimatedMinutes: 10
+description: "Descriptive statistics, hypothesis testing, bias-variance tradeoff, and the central limit theorem"
+---
+
+## Why Statistics?
+
+Probability tells us how to reason about random processes. Statistics flips the question: given observed data, what can we infer about the underlying process? In ML, this means estimating model parameters, diagnosing overfitting, and deciding whether a result is real or noise.
+
+## Descriptive Statistics
+
+Before modeling, describe your data:
+
+- **Mean** `μ = (1/n) Σ xᵢ` — central tendency; sensitive to outliers
+- **Median** — middle value; robust to outliers
+- **Variance** `σ² = (1/n) Σ (xᵢ - μ)²` — spread around the mean
+- **Standard deviation** `σ` — same units as the data; easier to interpret
+- **Skewness** — asymmetry of the distribution (long left or right tail)
+- **Kurtosis** — weight in the tails (heavy-tailed vs light-tailed)
+
+For ML: always check these before training. High variance features may need normalization; skewed targets may need log transformation.
+
+## Covariance and Correlation
+
+**Covariance** `Cov(X, Y) = E[(X - μₓ)(Y - μᵧ)]` measures how two variables move together. Positive means they rise together; negative means one rises as the other falls.
+
+**Pearson correlation** `ρ = Cov(X,Y) / (σₓ · σᵧ)` normalizes covariance to `[-1, 1]`. It measures *linear* association only. The correlation matrix across all features reveals redundancy (high ρ = multicollinearity) and informs feature selection.
+
+## The Central Limit Theorem
+
+The CLT states: if you draw n independent samples from *any* distribution with finite mean μ and variance σ², their sample mean `X̄` approaches a Gaussian distribution as n → ∞:
+
+`X̄ ~ N(μ, σ²/n)`
+
+This is why the Gaussian distribution is ubiquitous in ML: loss values, weight updates, and many model outputs are sums of many small independent contributions, so they approximately follow a Gaussian regardless of the original distribution.
+
+## Hypothesis Testing
+
+A **hypothesis test** decides whether observed data provides enough evidence to reject a null hypothesis `H₀`. Key concepts:
+
+- **p-value**: probability of seeing data this extreme if H₀ were true. Low p-value → reject H₀.
+- **Type I error (α)**: false positive — rejecting H₀ when it's true
+- **Type II error (β)**: false negative — failing to reject a false H₀
+- **Statistical power (1-β)**: probability of detecting a true effect
+
+In ML, A/B testing a new model uses these exact ideas: is the accuracy improvement real, or sampling noise?
+
+## Bias-Variance Tradeoff
+
+The expected test error of any estimator decomposes as:
+
+`E[(y - ŷ)²] = Bias² + Variance + Irreducible noise`
+
+- **Bias**: error from wrong assumptions — underfitting. A linear model on nonlinear data has high bias.
+- **Variance**: error from sensitivity to training data fluctuations — overfitting. A depth-20 decision tree memorizes training noise.
+
+The tradeoff: reducing bias often increases variance and vice versa. Regularization, ensemble methods, and early stopping are all strategies to navigate this tradeoff.
+
+<NeuronDiagram animate />
+
+```python runnable
+import numpy as np
+
+rng = np.random.default_rng(0)
+data = rng.normal(5.0, 2.0, 500)
+
+# Descriptive statistics
+print("=== Descriptive Stats ===")
+print(f"Mean:     {data.mean():.4f}")
+print(f"Std:      {data.std():.4f}")
+print(f"Variance: {data.var():.4f}")
+print(f"Min/Max:  {data.min():.2f} / {data.max():.2f}")
+
+# Central Limit Theorem demo
+n_samples, sample_size = 1000, 30
+# Original distribution: heavily skewed (exponential)
+population = rng.exponential(scale=2.0, size=50000)
+print(f"\\n=== CLT Demo ===")
+print(f"Population: Exponential(2). Mean={population.mean():.3f}, Std={population.std():.3f}")
+
+sample_means = [rng.choice(population, sample_size).mean() for _ in range(n_samples)]
+sample_means = np.array(sample_means)
+print(f"Sample means (n={sample_size}): Mean={sample_means.mean():.3f}, Std={sample_means.std():.3f}")
+print(f"CLT predicted std: {population.std() / np.sqrt(sample_size):.3f}")
+
+# Correlation matrix
+x = rng.normal(0, 1, 200)
+y = 0.8 * x + rng.normal(0, 0.6, 200)   # correlated
+z = rng.normal(0, 1, 200)                # independent
+
+mat = np.column_stack([x, y, z])
+corr = np.corrcoef(mat.T)
+print(f"\\n=== Correlation Matrix ===")
+print(np.round(corr, 2))
+```
+
+```quiz
+[{
+    question: "The Central Limit Theorem says the distribution of sample means approaches Gaussian. What must be true of the underlying population?",
+    options: ["It must already be Gaussian", "It must have finite mean and variance", "It must be symmetric", "It must be discrete"],
+    correct: 1,
+    explanation: "The CLT requires only finite mean and variance — the original distribution can be any shape (uniform, exponential, etc.). This is what makes it so powerful in practice."
+  },
+  {
+    question: "A model scores 98% on training data and 62% on the test set. This is primarily a symptom of:",
+    options: ["High bias", "High variance (overfitting)", "High irreducible noise", "Data leakage"],
+    correct: 1,
+    explanation: "A large train-test gap signals high variance — the model memorized training-set details instead of learning generalizable patterns. The fix is regularization, more data, or a simpler model."
+  },
+  {
+    question: "Pearson correlation ρ = 0 between X and Y means:",
+    options: ["X and Y are independent", "X and Y have no linear relationship", "X and Y have no relationship of any kind", "Their covariance matrices are equal"],
+    correct: 1,
+    explanation: "ρ = 0 means no *linear* association. A perfect quadratic relationship (e.g. Y = X²) gives ρ ≈ 0. Independence implies ρ = 0, but ρ = 0 does not imply independence."
+  }]
+```

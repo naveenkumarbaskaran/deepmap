@@ -1,0 +1,91 @@
+---
+title: "Linear Algebra"
+track: "mathematics"
+estimatedMinutes: 12
+description: "Vectors, matrices, and the foundations of everything in ML"
+---
+
+## Why Linear Algebra?
+
+Machine learning is linear algebra under the hood. Every neural network layer is a matrix multiplication. Every image is a tensor. Every word embedding is a vector. If you want to understand what a model is *actually doing*, you need this.
+
+## Vectors
+
+A vector is an ordered list of numbers. In ML, vectors represent everything — a 768-dimensional word embedding, a pixel row, a user's preference profile.
+
+Key operations:
+- **Dot product**: `a · b = Σ aᵢbᵢ` — measures alignment/similarity
+- **Norm**: `||a|| = √(a · a)` — measures length
+- **Cosine similarity**: `cos(θ) = (a · b) / (||a|| · ||b||)` — angle between vectors, used everywhere in NLP
+
+## Matrices
+
+A matrix is a rectangular grid of numbers. In ML, matrices represent:
+- Weight matrices in neural layers (`W ∈ ℝ^{m×n}`)
+- Datasets (each row = one sample)
+- Transformations (rotating, scaling, projecting data)
+
+**Matrix multiplication** `C = A @ B` combines transformations. If A is `(m×k)` and B is `(k×n)`, then C is `(m×n)`. This is the single most-executed operation in deep learning.
+
+## Eigenvalues and Eigenvectors
+
+For a square matrix A, if `Av = λv`, then v is an **eigenvector** and λ is its **eigenvalue**. Eigenvectors are directions the matrix only stretches (not rotates). They appear in PCA, spectral methods, and understanding gradient dynamics.
+
+## Singular Value Decomposition (SVD)
+
+Any matrix `A = UΣVᵀ`. SVD decomposes a transformation into: rotate (U) → stretch (Σ) → rotate (Vᵀ). Used in dimensionality reduction, recommender systems, and analyzing weight matrices.
+
+<NeuronDiagram animate />
+
+## Rank and Null Space
+
+The **rank** of a matrix is the number of linearly independent rows/columns — essentially how much information it carries. A rank-deficient matrix compresses some input directions to zero (the null space). Low-rank approximations are behind LoRA and many efficient fine-tuning methods.
+
+```python runnable
+import numpy as np
+
+# Matrix multiplication
+A = np.array([[1, 2], [3, 4]])
+B = np.array([[5, 6], [7, 8]])
+C = A @ B
+print("A @ B =")
+print(C)
+
+# Dot product
+a = np.array([1, 2, 3])
+b = np.array([4, 5, 6])
+print("\nDot product:", np.dot(a, b))
+
+# Cosine similarity
+cos_sim = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+print("Cosine similarity:", round(cos_sim, 4))
+
+# Eigenvalues
+vals, vecs = np.linalg.eig(A)
+print("\nEigenvalues of A:", vals)
+
+# SVD
+U, S, Vt = np.linalg.svd(A)
+print("Singular values:", S)
+```
+
+```quiz
+[{
+    question: "What is the dot product of vectors [1, 2, 3] and [4, 5, 6]?",
+    options: ["14", "28", "32", "21"],
+    correct: 2,
+    explanation: "1×4 + 2×5 + 3×6 = 4 + 10 + 18 = 32"
+  },
+  {
+    question: "Which operation is NOT linear?",
+    options: ["Matrix multiplication", "Vector addition", "ReLU activation", "Scalar multiplication"],
+    correct: 2,
+    explanation: "ReLU(x) = max(0,x) is not linear because ReLU(-1) ≠ -ReLU(1)"
+  },
+  {
+    question: "What does the rank of a matrix tell us?",
+    options: ["Its size", "Number of independent columns/rows", "Its determinant", "Number of eigenvalues"],
+    correct: 1,
+    explanation: "Rank is the dimension of the column space — how many linearly independent columns exist"
+  }]
+```

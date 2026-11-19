@@ -1,0 +1,164 @@
+---
+title: "Agentic RAG"
+track: "agents"
+estimatedMinutes: 13
+description: "Beyond static retrieval pipelines — how agentic RAG uses query decomposition, iterative retrieval, self-critique, and coverage scoring to produce reliably grounded answers."
+---
+
+## The Limits of Naive RAG
+
+Standard RAG is a linear pipeline: embed query → retrieve top-K chunks → stuff into context → generate. It works well when the query is simple and a single retrieval pass captures all relevant evidence. It breaks down when:
+
+- The query is multi-part or ambiguous
+- The first retrieval misses critical evidence
+- Retrieved chunks contradict each other
+- The question requires synthesis across many documents
+
+**Agentic RAG** replaces the fixed pipeline with a reasoning loop. The agent decides *when* to retrieve, *what* to query, *whether* the results are sufficient, and *whether* to try again.
+
+## Query Decomposition
+
+Before retrieving anything, an agentic RAG system breaks a complex question into atomic sub-queries. "What are the differences between SAP EAM order types YA01 and YA02, and how does phase control affect each?" becomes three distinct retrievals:
+
+1. What is order type YA01?
+2. What is order type YA02?
+3. How does phase control interact with order type handling?
+
+Each sub-query retrieves independently; the agent synthesizes at the end. This prevents a single over-broad embedding from missing specific evidence.
+
+## Iterative Retrieval and Coverage Scoring
+
+After each retrieval, the agent evaluates **coverage**: does the retrieved evidence sufficiently answer the sub-query?
+
+A simple coverage score: given the query embedding `q` and the set of retrieved chunk embeddings `{d_i}`, compute max cosine similarity. If it falls below a threshold (e.g. 0.7), the evidence is insufficient — re-query with an expanded or reframed query.
+
+This loop runs up to N times (typically 2–3) before accepting the best available result.
+
+## Self-Critique of Retrieved Evidence
+
+Coverage scoring is syntactic (embedding distance). Self-critique is semantic: the agent reasons about whether the retrieved evidence actually answers the question, flags contradictions, and identifies gaps.
+
+Prompt pattern:
+```
+Evidence: <retrieved chunks>
+Question: <sub-query>
+Does this evidence fully answer the question? If not, what is missing?
+```
+
+The critique step guides whether to accept, re-query, or escalate to a different retrieval strategy (e.g. BM25 keyword search instead of semantic search).
+
+## Corrective RAG and Self-RAG
+
+**Corrective RAG (CRAG)** adds a retrieval evaluator that classifies each retrieved document as "correct," "incorrect," or "ambiguous." Incorrect documents are discarded; ambiguous ones trigger a web search for supplemental evidence.
+
+**Self-RAG** trains the model to emit special tokens (`[Retrieve]`, `[IsRel]`, `[IsSup]`, `[IsUse]`) inline, turning retrieval decisions into part of generation rather than a separate orchestration layer.
+
+## When to Use Agentic vs Pipeline RAG
+
+| Scenario | Recommendation |
+|---|---|
+| Simple factual lookup | Pipeline RAG — faster, cheaper |
+| Multi-part or ambiguous query | Agentic RAG |
+| High-stakes answer (medical, legal, financial) | Agentic RAG with self-critique |
+| Real-time latency constraint | Pipeline RAG |
+| Evidence may contradict or be incomplete | Agentic RAG with CRAG |
+
+<TransformerBlock animate />
+
+## Coverage-Based Iterative Retrieval
+
+```python runnable
+import numpy as np
+
+np.random.seed(42)
+
+# Simulate an agentic RAG coverage loop.
+# We have a query and a corpus. We retrieve top-K chunks per round,
+# check coverage (max cosine sim), and re-query if below threshold.
+
+def cosine_sim(a, b):
+    norm = np.linalg.norm(a) * np.linalg.norm(b)
+    return np.dot(a, b) / (norm + 1e-9)
+
+THRESHOLD = 0.75
+MAX_ROUNDS = 3
+dim = 8
+
+# Original query embedding
+query = np.random.randn(dim)
+query /= np.linalg.norm(query)
+
+# Corpus: 10 chunks with embeddings
+n_chunks = 10
+corpus = np.random.randn(n_chunks, dim)
+corpus /= np.linalg.norm(corpus, axis=1, keepdims=True)
+
+# Chunk relevance labels for display
+chunk_labels = [f"chunk_{i:02d}" for i in range(n_chunks)]
+
+retrieved_all = set()
+
+for round_num in range(1, MAX_ROUNDS + 1):
+    # Add small perturbation to query on re-queries (simulate expansion)
+    if round_num > 1:
+        query = query + np.random.randn(dim) * 0.3
+        query /= np.linalg.norm(query)
+
+    # Compute similarities
+    sims = np.array([cosine_sim(query, c) for c in corpus])
+
+    # Top-3 retrieval (excluding already retrieved)
+    order = np.argsort(-sims)
+    new_retrieved = [i for i in order if i not in retrieved_all][:3]
+    retrieved_all.update(new_retrieved)
+
+    coverage = max(sims[i] for i in retrieved_all)
+
+    print(f"Round {round_num}: retrieved {[chunk_labels[i] for i in new_retrieved]}")
+    print(f"  Best coverage score: {coverage:.3f}  "
+          f"({'PASS' if coverage >= THRESHOLD else 'BELOW threshold — re-querying'})")
+
+    if coverage >= THRESHOLD:
+        print(f"\\nSufficient coverage reached at round {round_num}.")
+        break
+else:
+    print(f"\\nMax rounds reached. Best coverage: {coverage:.3f}. Using best available.")
+
+print(f"Total chunks used: {len(retrieved_all)}")
+```
+
+```quiz
+[{
+    question: "What is the core difference between pipeline RAG and agentic RAG?",
+    options: [
+      "Agentic RAG uses a larger embedding model",
+      "Pipeline RAG uses BM25; agentic RAG uses semantic search",
+      "Agentic RAG replaces the fixed retrieve-then-generate pipeline with a reasoning loop that can re-query based on coverage",
+      "Agentic RAG does not use a vector database"
+    ],
+    correct: 2,
+    explanation: "Pipeline RAG is a fixed single-pass process. Agentic RAG wraps retrieval in a reasoning loop: the agent evaluates evidence quality, decides whether to re-query, and iterates until coverage is sufficient or a step limit is reached."
+  },
+  {
+    question: "What does query decomposition improve in agentic RAG?",
+    options: [
+      "Embedding model accuracy",
+      "Latency by reducing the number of retrieval calls",
+      "Coverage for multi-part questions by retrieving evidence for each sub-question independently",
+      "Token efficiency by compressing queries before embedding"
+    ],
+    correct: 2,
+    explanation: "A single embedding for a complex multi-part question is a noisy average of its parts. Decomposing into atomic sub-queries and retrieving independently ensures each part of the question gets targeted evidence."
+  },
+  {
+    question: "In Corrective RAG (CRAG), what happens to retrieved documents classified as 'incorrect'?",
+    options: [
+      "They are re-ranked using BM25 and retried",
+      "They are discarded and may trigger a supplemental web search",
+      "They are summarized and merged with the correct documents",
+      "They are passed to the model with a warning prefix"
+    ],
+    correct: 1,
+    explanation: "CRAG's retrieval evaluator classifies each document as correct, incorrect, or ambiguous. Incorrect documents are discarded rather than passed to the generator. Ambiguous ones may trigger additional retrieval (e.g. from the web) to supplement the evidence."
+  }]
+```

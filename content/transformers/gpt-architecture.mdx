@@ -1,0 +1,130 @@
+---
+title: "GPT Architecture"
+track: "transformers"
+estimatedMinutes: 13
+description: "Understand the decoder-only GPT architecture — causal self-attention, autoregressive next-token prediction, the scaling journey from GPT-1 to GPT-4, KV-cache for inference, and why decoder-only became the dominant paradigm."
+---
+
+## Decoder-Only Transformers
+
+GPT (Generative Pre-trained Transformer) uses a **decoder-only** architecture: a stack of transformer blocks, each with causal (left-to-right) self-attention. There is no encoder, no cross-attention, and no bidirectional context. Each token can only attend to tokens at earlier positions (including itself).
+
+This is enforced by a **causal attention mask** — a lower-triangular mask that zeroes out attention weights to future positions. During training, the entire sequence is processed in one forward pass: position i predicts token i+1 using only tokens 0…i.
+
+## Autoregressive Language Modeling
+
+Pre-training objective: maximize the log probability of each token given its left context:
+
+```
+L = Σ log P(token_i | token_0, ..., token_{i-1})
+```
+
+This is the simplest possible objective — predict the next word — and yet it scales to emergent capabilities including few-shot reasoning, code generation, and instruction following. The "emergent" nature means these capabilities appear abruptly above certain scale thresholds and are not explicitly trained for.
+
+## Scaling: GPT-1 → GPT-4
+
+| Model | Params | Layers | d_model | Heads | Training data |
+|-------|--------|--------|---------|-------|---------------|
+| GPT-1 | 117M   | 12     | 768     | 12    | BooksCorpus (5GB) |
+| GPT-2 | 1.5B   | 48     | 1600    | 25    | WebText (40GB) |
+| GPT-3 | 175B   | 96     | 12288   | 96    | 300B tokens |
+| GPT-4 | ~1T (est.) | unknown | unknown | unknown | unknown |
+
+Each generation showed qualitative jumps in capability — few-shot prompting emerged at GPT-3 scale.
+
+## KV-Cache for Efficient Inference
+
+During inference, autoregressive generation is token-by-token. At each step, attention must attend to all previous tokens. Without optimization, this requires recomputing keys and values for all past tokens on every step — O(n²) work per token, O(n³) total.
+
+The **KV-cache** saves Key and Value tensors for all past positions. At each new step, only the new token's Q/K/V are computed; Keys and Values are retrieved from cache. This reduces generation cost from O(n³) to O(n²) in total, with a memory footprint of `2 × n × n_layers × d_model × dtype_bytes`.
+
+## The Decoder-Only Trend
+
+After GPT-3, the field largely converged on decoder-only architectures even for tasks previously dominated by encoder-decoder models (translation, summarization). Reasons:
+
+- Simpler: one pre-training objective, one architecture variant
+- Scales better: emergent few-shot learning means no fine-tuning needed for many tasks
+- Generative: naturally handles open-ended generation that encoder models cannot
+
+<TransformerBlock animate />
+
+## Implementing Causal Masking in NumPy
+
+```python runnable
+import numpy as np
+
+np.random.seed(42)
+n, d_model, d_k = 5, 8, 8
+
+X = np.random.randn(n, d_model)
+W_Q = np.random.randn(d_model, d_k) * 0.1
+W_K = np.random.randn(d_model, d_k) * 0.1
+W_V = np.random.randn(d_model, d_k) * 0.1
+
+Q = X @ W_Q; K = X @ W_K; V = X @ W_V
+scores = Q @ K.T / np.sqrt(d_k)
+
+print("Uncaused (bidirectional) attention scores:")
+print(np.round(scores, 2))
+
+# Causal mask: upper triangle = -inf, lower triangle = 0
+causal_mask = np.triu(np.ones((n, n)), k=1)   # 1s above diagonal
+causal_mask_logit = causal_mask * -1e9         # replace 1s with -inf
+
+print("\\nCausal mask (positions blocked = -1e9):")
+print(causal_mask_logit.astype(int))
+
+masked_scores = scores + causal_mask_logit
+print("\\nMasked scores (future = -1e9):")
+print(np.round(masked_scores, 2))
+
+def softmax(x):
+    e = np.exp(x - x.max(axis=-1, keepdims=True))
+    return e / e.sum(axis=-1, keepdims=True)
+
+attn_weights = softmax(masked_scores)
+print("\\nCausal attention weights (upper triangle ≈ 0):")
+print(np.round(attn_weights, 3))
+
+# Demonstrate: token 0 can only see itself; token 4 can see all 5
+print("\\nToken 0 weights (should attend only to pos 0):", attn_weights[0])
+print("Token 4 weights (can attend to all):", np.round(attn_weights[4], 3))
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What computational benefit does the KV-cache provide during autoregressive inference?",
+    options: [
+      "It reduces total generation cost from O(n³) to O(n²) by reusing pre-computed keys and values",
+      "It eliminates the need for positional encodings during generation",
+      "It allows the model to attend to future tokens without recomputing",
+      "It reduces memory by quantizing key and value tensors to int8"
+    ],
+    correct: 0,
+    explanation: "Without KV-cache, generating each of n tokens requires recomputing attention over all previous tokens — O(n²) per step, O(n³) total. With KV-cache, Keys and Values for all past tokens are stored and reused; only the new token requires computation, reducing total cost to O(n²)."
+  },
+  {
+    question: "In a causal attention mask, the upper-triangular positions are set to -∞ before softmax. What does this achieve?",
+    options: [
+      "It prevents the model from attending to itself (diagonal)",
+      "After softmax, those attention weights become 0, blocking information flow from future tokens",
+      "It normalizes attention weights to sum to less than 1",
+      "It applies a regularization penalty to long-range attention"
+    ],
+    correct: 1,
+    explanation: "softmax(-∞) = 0, so positions masked with -∞ contribute nothing to the weighted sum of values. Each token can only aggregate information from itself and earlier positions, enforcing autoregressive (left-to-right) prediction."
+  },
+  {
+    question: "Which emergent capability first appeared significantly at the GPT-3 scale (~175B parameters)?",
+    options: [
+      "Grammatically correct text generation",
+      "Code completion",
+      "Few-shot in-context learning without gradient updates",
+      "Multi-language translation"
+    ],
+    correct: 2,
+    explanation: "GPT-3 demonstrated that large enough language models can perform new tasks from just a few examples in the prompt — no fine-tuning or gradient updates required. This few-shot in-context learning was largely absent in GPT-1 and GPT-2 and appeared as a qualitative jump at GPT-3 scale."
+  }]
+```

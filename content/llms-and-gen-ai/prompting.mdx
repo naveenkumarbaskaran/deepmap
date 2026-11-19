@@ -1,0 +1,113 @@
+---
+title: "Prompting"
+track: "llms-and-gen-ai"
+estimatedMinutes: 10
+description: "Master prompting techniques — zero-shot, few-shot, chain-of-thought, and ReAct — and understand why in-context learning works through temperature sampling."
+---
+
+## What Is Prompting?
+
+Prompting is the practice of crafting inputs to steer a language model toward a desired output — without changing any model weights. Because LLMs are trained to predict the next token given a context, the prompt is the entire lever you have at inference time.
+
+## Prompting Strategies
+
+**Zero-shot** prompting gives the model a task description and expects it to generalize from pre-training. It works surprisingly well for common tasks but can fail on niche formats or multi-step reasoning.
+
+**Few-shot** prompting prepends 2–8 input/output examples before the actual query. The model treats the examples as an implicit pattern to continue. Example quality matters more than quantity.
+
+**Chain-of-thought (CoT)** prompting asks the model to reason step-by-step before giving a final answer — either by example ("Let's think step by step…") or zero-shot instruction. CoT significantly improves arithmetic, symbolic reasoning, and multi-hop QA tasks.
+
+**Self-consistency** runs CoT multiple times with high temperature, then majority-votes on the final answer. It trades compute for reliability.
+
+**ReAct** (Reason + Act) interleaves reasoning traces with tool calls — the model thinks, calls an API, observes the result, then reasons again. This is the backbone of most LLM agents.
+
+## System Prompts and Roles
+
+Modern chat APIs expose a `system` turn that sets the model's persona, constraints, and output format. System prompts persist across the conversation and are processed before user messages. They are not magic — the model can still be persuaded to override them via **prompt injection** attacks, where adversarial content in retrieved data tries to hijack the instruction stream.
+
+## Temperature and Top-p Sampling
+
+After the model produces logits (unnormalized log-probabilities over the vocabulary), sampling controls how tokens are drawn:
+
+- **Temperature T**: divides logits before softmax. T < 1 sharpens the distribution (more deterministic); T > 1 flattens it (more random).
+- **Top-p (nucleus) sampling**: keeps only the smallest set of tokens whose cumulative probability ≥ p, then renormalizes. Prevents sampling from the long tail.
+
+<TransformerBlock animate />
+
+## Why Prompting Works
+
+Prompting exploits **in-context learning** (ICL) — the model's ability to infer a task from examples in the prompt without gradient updates. This emerges from pre-training on web-scale data where tasks are implicitly demonstrated in context (e.g., FAQ pages, code comments, math solutions).
+
+## Temperature Sampling — Numpy Simulation
+
+```python runnable
+import numpy as np
+
+# Logits for a 5-token vocabulary (raw model output)
+logits = np.array([2.0, 1.5, 0.8, 0.3, -0.5])
+token_labels = ["cat", "dog", "fish", "bird", "car"]
+
+def softmax(x):
+    e = np.exp(x - np.max(x))
+    return e / e.sum()
+
+print("Token probabilities at different temperatures:")
+print(f"{'Token':<8}", end="")
+for T in [0.5, 1.0, 1.5, 2.0]:
+    print(f"  T={T:<4}", end="")
+print()
+
+for i, token in enumerate(token_labels):
+    print(f"{token:<8}", end="")
+    for T in [0.5, 1.0, 1.5, 2.0]:
+        prob = softmax(logits / T)[i]
+        print(f"  {prob:.3f} ", end="")
+    print()
+
+print()
+print("Entropy (bits) — higher T = more uncertainty:")
+for T in [0.5, 1.0, 1.5, 2.0]:
+    probs = softmax(logits / T)
+    entropy = -np.sum(probs * np.log2(probs + 1e-12))
+    print(f"  T={T}: entropy = {entropy:.3f} bits")
+```
+
+## Best Practices
+
+1. **Be specific** — vague prompts produce vague outputs. State format, length, and constraints explicitly.
+2. **Give examples** — few-shot beats zero-shot for structured outputs (JSON, tables, code).
+3. **Ask for reasoning** — adding "think step by step" or "explain your reasoning" improves accuracy on hard tasks.
+4. **Guard against injection** — sanitize or fence retrieved content before inserting it into prompts.
+
+## Quiz
+
+```quiz
+[{
+    question: "What does setting temperature T < 1 do to the token probability distribution?",
+    options: [
+      "Flattens it, making all tokens equally likely",
+      "Sharpens it, increasing the probability of the top token",
+      "Shifts it toward rare tokens",
+      "Has no effect on probabilities"
+    ],
+    correct: 1,
+    explanation: "Dividing logits by T < 1 amplifies the differences between them before softmax, sharpening the distribution and making the highest-scoring token even more likely."
+  },
+  {
+    question: "Which prompting technique interleaves reasoning traces with external tool calls?",
+    options: ["Chain-of-thought", "Self-consistency", "ReAct", "Few-shot"],
+    correct: 2,
+    explanation: "ReAct (Reason + Act) is designed for agentic use — the model alternates between thinking and calling tools, observing results, and reasoning again."
+  },
+  {
+    question: "What is a prompt injection attack?",
+    options: [
+      "Sending very long prompts to overflow the context window",
+      "Adversarial content in retrieved data that tries to override system instructions",
+      "Using too many few-shot examples",
+      "Setting temperature to 0 to force deterministic outputs"
+    ],
+    correct: 1,
+    explanation: "Prompt injection embeds malicious instructions in user-controlled or retrieved content (e.g., a web page) to hijack the model's behavior and override the system prompt."
+  }]
+```

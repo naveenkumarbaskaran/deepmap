@@ -28,7 +28,7 @@ export function AttentionHeatmap({
   const svgSize = labelOffset + n * cellSize + 10;
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "#080810" }}>
+    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
       <svg width="100%" viewBox={`0 0 ${svgSize} ${svgSize}`} style={{ display: "block" }}>
         {/* Column labels (top) */}
         {tokens.map((t, i) => (

@@ -1,0 +1,137 @@
+---
+title: "In-Context Learning"
+track: "llms-and-gen-ai"
+estimatedMinutes: 11
+description: "Understand how LLMs learn from examples in the prompt without any weight updates — and why label format, example order, and prompt structure all matter."
+---
+
+## What Is In-Context Learning?
+
+In-Context Learning (ICL) is the ability of a large language model to perform a new task by conditioning on a few input–output demonstrations placed directly in the prompt — with **no gradient updates** to the model's parameters.
+
+This distinguishes ICL sharply from classical machine learning: the model never "trains" on your examples. Instead, it uses the examples to infer the task structure and shifts its output distribution accordingly.
+
+## How It Works
+
+When you prepend labeled examples to a query:
+
+```
+Input: "The movie was boring."  Label: Negative
+Input: "Fantastic acting!"      Label: Positive
+Input: "Completely forgettable" Label: ???
+```
+
+the model uses the pattern in the prompt to predict the next label. Empirically, what matters most is not the correctness of the labels (!) but:
+
+1. **Label format** — the model learns the output schema (e.g., "Positive"/"Negative" vs "1"/"0"). Consistent formatting dramatically outperforms inconsistent formatting.
+2. **Input distribution** — examples should resemble the actual query inputs. Out-of-distribution examples hurt more than help.
+3. **Example order** — models are sensitive to the order of few-shot examples, sometimes showing recency bias toward the last few. Averaging over permutations reduces variance.
+
+## The Implicit Bayesian Hypothesis
+
+One influential theory frames LLMs as **implicit Bayesian inferrers**. Under this view, the model maintains an implicit prior over tasks from pre-training. Each in-context example is evidence that updates its posterior over what task is being requested. The final prediction is then the posterior-weighted output.
+
+This explains several empirical observations: why more examples generally help (more evidence), why wrong labels still provide signal (they constrain the task schema), and why very long prompts with redundant examples show diminishing returns (the posterior saturates).
+
+<TransformerBlock animate />
+
+## ICL vs Fine-Tuning
+
+| Dimension | ICL | Fine-Tuning |
+|---|---|---|
+| Weight updates | None | Yes |
+| Data required | 0–64 examples | Hundreds–millions |
+| Latency | Context grows with examples | Fixed (examples baked in) |
+| Generalization | Prompt-bound | Persistent |
+| Risk | Prompt injection | Catastrophic forgetting |
+
+ICL is ideal when: data is scarce, the task changes frequently, or you need a quick prototype. Fine-tuning wins when you need low latency, consistent behavior at scale, or the task is too complex for in-context demonstration.
+
+## Numpy Simulation — How Examples Shift the Output Distribution
+
+```python runnable
+import numpy as np
+
+# Simulate how few-shot examples shift a model's class probability estimate.
+# We model the update as a simple Bayesian posterior update:
+# P(class | examples) ∝ P(prior) * P(examples | class)^n_examples
+
+# Prior from pre-training (uniform over Positive / Negative)
+prior = np.array([0.5, 0.5])  # [Positive, Negative]
+
+# Likelihood: each positive example is 3x more likely under the Positive class
+# Each negative example is 3x more likely under the Negative class
+def posterior(n_pos_examples, n_neg_examples, prior=prior):
+    likelihood = np.array([
+        3**n_pos_examples * 1**n_neg_examples,   # P(data | Positive)
+        1**n_pos_examples * 3**n_neg_examples    # P(data | Negative)
+    ])
+    unnorm = prior * likelihood
+    return unnorm / unnorm.sum()
+
+print("Effect of few-shot examples on P(Positive | examples):")
+print(f"{'Setup':<30} {'P(Positive)':>12} {'P(Negative)':>12}")
+print("-" * 56)
+
+configs = [
+    ("0 examples (prior)", 0, 0),
+    ("1 positive example", 1, 0),
+    ("2 positive examples", 2, 0),
+    ("3 positive examples", 3, 0),
+    ("2 pos + 1 neg (mixed)", 2, 1),
+    ("1 pos + 2 neg (mixed)", 1, 2),
+]
+
+for label, n_pos, n_neg in configs:
+    p = posterior(n_pos, n_neg)
+    print(f"{label:<30} {p[0]:>12.3f} {p[1]:>12.3f}")
+
+print()
+print("Key insight: even 1-2 examples meaningfully shift the distribution.")
+print("Mixed examples lead to uncertainty (posterior near 0.5).")
+```
+
+## Practical Guidance
+
+- **Seed with high-quality examples** — one excellent example beats five mediocre ones.
+- **Match example format exactly** — whitespace, punctuation, and label tokens all influence output.
+- **Shuffle and test order** — if you have 8 examples, test 3–5 orderings and pick the most stable.
+- **ICL fails silently** — when the model can't generalize from your examples, it may confidently produce wrong outputs. Always evaluate.
+
+## Quiz
+
+```quiz
+[{
+    question: "What most distinguishes in-context learning from fine-tuning?",
+    options: [
+      "ICL uses more training data",
+      "ICL updates model weights during the forward pass",
+      "ICL requires no weight updates — the model learns from examples in the prompt only",
+      "ICL only works with GPT-4 class models"
+    ],
+    correct: 2,
+    explanation: "ICL is a purely inference-time phenomenon. The model's weights are frozen; it adapts its output distribution by conditioning on the prompt examples without any gradient steps."
+  },
+  {
+    question: "Research has shown that in few-shot ICL, using random (wrong) labels for examples:",
+    options: [
+      "Completely destroys performance",
+      "Still provides useful signal about the task schema and label space",
+      "Has the same effect as correct labels",
+      "Only affects classification tasks, not generation tasks"
+    ],
+    correct: 1,
+    explanation: "Min et al. (2022) showed that the input distribution and label format matter more than label correctness. Wrong labels still teach the model the output schema and anchor the task type."
+  },
+  {
+    question: "Under the implicit Bayesian hypothesis, what do in-context examples represent?",
+    options: [
+      "Gradient signals that update the attention weights",
+      "Evidence that updates the model's posterior over what task is being requested",
+      "Cache entries that speed up inference",
+      "Regularization noise added to prevent overfitting"
+    ],
+    correct: 1,
+    explanation: "The Bayesian framing treats the model's pre-training as instilling a prior over tasks. Each example is evidence that shifts the posterior toward the intended task, explaining why more examples generally improve accuracy."
+  }]
+```

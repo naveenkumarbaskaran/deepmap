@@ -1,0 +1,136 @@
+---
+title: "Self-Attention"
+track: "transformers"
+estimatedMinutes: 14
+description: "Understand how each token attends to every other token in a sequence through Query, Key, and Value projections, scaled dot-product attention, and causal masking."
+---
+
+## What Is Self-Attention?
+
+Self-attention lets every token in a sequence look at every other token when computing its representation. Unlike RNNs that process tokens one-by-one, self-attention computes all pairwise relationships in parallel. This is both the source of transformers' power and their O(n²) memory cost.
+
+For a sequence of `n` tokens, each token produces three vectors: a **Query** (Q), a **Key** (K), and a **Value** (V). These come from learned linear projections of the input embeddings:
+
+```
+Q = X W_Q
+K = X W_K
+V = X W_V
+```
+
+where X ∈ ℝ^(n × d_model) is the input and each W is a learned weight matrix of shape (d_model × d_k).
+
+## Scaled Dot-Product Attention
+
+The attention output is computed as:
+
+```
+Attention(Q, K, V) = softmax(QKᵀ / √d_k) · V
+```
+
+The dot product `QKᵀ` produces an (n × n) matrix of raw similarity scores — how much each token's query aligns with each token's key. We then:
+
+1. **Scale** by `1/√d_k` — without this, large `d_k` causes dot products to grow large in magnitude, pushing softmax into regions with near-zero gradients. Dividing by √d_k keeps variance approximately 1 regardless of dimensionality.
+2. **Softmax** row-wise — converts each row of scores into a probability distribution over all positions.
+3. **Weighted sum of Values** — the output for each token is a weighted mixture of all value vectors, weighted by attention probabilities.
+
+## Visualizing Attention
+
+The attention heatmap below shows which tokens attend to which. Each cell (i, j) is the attention weight from token i to token j — how much position i "looks at" position j when computing its output.
+
+<AttentionHeatmap animate />
+
+## Causal Masking for Autoregressive Models
+
+BERT-style encoders can attend to all positions freely (bidirectional). GPT-style decoders must only attend to past positions — otherwise the model would "see the future" during training. This is enforced by an **attention mask**: before softmax, we set future positions to −∞:
+
+```
+mask[i, j] = -inf  if j > i
+mask[i, j] = 0     otherwise
+```
+
+After softmax, −∞ becomes 0, so no information flows from future tokens to past ones.
+
+## Implementing Self-Attention in NumPy
+
+```python runnable
+import numpy as np
+
+np.random.seed(42)
+n, d_model, d_k = 4, 8, 8
+
+# Input: 4 tokens, 8-dimensional embeddings
+X = np.random.randn(n, d_model)
+
+# Learned projection matrices
+W_Q = np.random.randn(d_model, d_k) * 0.1
+W_K = np.random.randn(d_model, d_k) * 0.1
+W_V = np.random.randn(d_model, d_k) * 0.1
+
+# Project to Q, K, V
+Q = X @ W_Q  # (4, 8)
+K = X @ W_K  # (4, 8)
+V = X @ W_V  # (4, 8)
+
+# Scaled dot-product: (4, 4) scores
+scores = Q @ K.T / np.sqrt(d_k)
+print("Raw attention scores (before softmax):")
+print(np.round(scores, 3))
+
+# Softmax row-wise
+def softmax(x):
+    e = np.exp(x - x.max(axis=-1, keepdims=True))
+    return e / e.sum(axis=-1, keepdims=True)
+
+attn_weights = softmax(scores)
+print("\\nAttention weights (each row sums to 1):")
+print(np.round(attn_weights, 3))
+print("Row sums:", np.round(attn_weights.sum(axis=-1), 4))
+
+# Weighted sum of values
+output = attn_weights @ V  # (4, 8)
+print("\\nAttention output shape:", output.shape)
+
+# Demonstrate causal mask (decoder-style)
+mask = np.triu(np.full((n, n), -1e9), k=1)
+causal_weights = softmax(scores + mask)
+print("\\nCausal attention weights (lower triangular):")
+print(np.round(causal_weights, 3))
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "Why do we divide the dot-product scores by √d_k before applying softmax?",
+    options: [
+      "To normalize the output vectors to unit length",
+      "To prevent large dot products from pushing softmax into near-zero gradient regions",
+      "To ensure the attention weights sum to d_k instead of 1",
+      "To make the computation differentiable"
+    ],
+    correct: 1,
+    explanation: "With large d_k, dot products grow large in magnitude (variance ∝ d_k), which saturates the softmax and produces extremely peaked distributions with near-zero gradients. Dividing by √d_k keeps variance ≈ 1."
+  },
+  {
+    question: "In a causal (decoder) attention mask, position i can attend to position j when:",
+    options: [
+      "j > i (future positions only)",
+      "j ≠ i (all positions except itself)",
+      "j ≤ i (current and past positions)",
+      "j < i (only strictly past positions)"
+    ],
+    correct: 2,
+    explanation: "Causal masking allows each position to attend to itself and all previous positions (j ≤ i). Future positions (j > i) are set to -∞ before softmax, making those weights effectively zero."
+  },
+  {
+    question: "What does the Value (V) matrix contribute to self-attention?",
+    options: [
+      "It determines which tokens are similar to each other",
+      "It provides the content that is aggregated based on attention weights",
+      "It scales the attention scores to prevent gradient vanishing",
+      "It encodes the positional information of each token"
+    ],
+    correct: 1,
+    explanation: "Q and K determine attention weights (which tokens to attend to), while V contains the actual content being aggregated. The output is a weighted sum of V vectors, weighted by the Q-K similarity scores."
+  }]
+```

@@ -22,7 +22,10 @@ export function Quiz({ questions, onComplete }: QuizProps) {
   const [score, setScore] = useState(0);
   const [finished, setFinished] = useState(false);
 
+  if (!questions || questions.length === 0) return null;
   const q = questions[currentQ];
+  if (!q) return null;
+
   const isCorrect = selected === q.correct;
 
   function handleSelect(i: number) {
@@ -86,31 +89,31 @@ export function Quiz({ questions, onComplete }: QuizProps) {
         </span>
       </div>
 
-      <div className="p-5" style={{ background: "#0d0d1a" }}>
+      <div className="p-5" style={{ background: "var(--surface)" }}>
         {/* Question */}
-        <p className="text-sm font-medium text-white mb-4">{q.question}</p>
+        <p className="text-sm font-medium mb-4" style={{ color: "var(--foreground)" }}>{q.question}</p>
 
         {/* Options */}
         <div className="flex flex-col gap-2 mb-4">
           {q.options.map((opt, i) => {
             let borderColor = "var(--border)";
-            let bg = "var(--surface)";
-            let textColor = "#94a3b8";
+            let bg = "var(--background)";
+            let textColor = "var(--muted)";
 
             if (revealed) {
               if (i === q.correct) {
                 borderColor = "#10b981";
                 bg = "#10b98115";
-                textColor = "#6ee7b7";
+                textColor = "#10b981";
               } else if (i === selected && i !== q.correct) {
                 borderColor = "#ef4444";
                 bg = "#ef444415";
-                textColor = "#fca5a5";
+                textColor = "#ef4444";
               }
             } else if (selected === i) {
               borderColor = "#6366f1";
               bg = "#6366f115";
-              textColor = "#a5b4fc";
+              textColor = "#6366f1";
             }
 
             return (
@@ -120,7 +123,7 @@ export function Quiz({ questions, onComplete }: QuizProps) {
                 className="text-left px-4 py-2.5 rounded-lg text-sm transition-all duration-150"
                 style={{ background: bg, border: `1px solid ${borderColor}`, color: textColor }}
               >
-                <span className="font-medium mr-2" style={{ color: "#475569" }}>
+                <span className="font-medium mr-2" style={{ color: "var(--muted)" }}>
                   {String.fromCharCode(65 + i)}.
                 </span>
                 {opt}

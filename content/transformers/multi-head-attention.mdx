@@ -1,0 +1,122 @@
+---
+title: "Multi-Head Attention"
+track: "transformers"
+estimatedMinutes: 12
+description: "Learn why running multiple attention heads in parallel lets a transformer capture different relationship types simultaneously, and how heads are split, computed, and recombined."
+---
+
+## Why Multiple Heads?
+
+A single attention head computes one set of attention patterns. In practice, different kinds of relationships coexist in a sentence: subject-verb agreement, coreference ("it" → "the cat"), local syntax, long-range dependencies. One head can only specialize in one pattern at a time.
+
+**Multi-head attention** runs `h` independent attention heads in parallel, each with its own Q, K, V projection matrices. Each head learns to attend differently, then the outputs are concatenated and projected back to `d_model`:
+
+```
+head_i = Attention(X W_Q_i, X W_K_i, X W_V_i)
+MultiHead(X) = Concat(head_1, ..., head_h) W_O
+```
+
+## Head Splitting
+
+To keep cost manageable, `d_model` is split across heads: each head operates on `d_k = d_model / h` dimensions. For GPT-2 (d_model=768, h=12), each head sees 64 dimensions. Total computation stays the same as a single head at full dimension — the split is a free decomposition.
+
+The projection matrices are:
+- W_Q_i, W_K_i, W_V_i ∈ ℝ^(d_model × d_k) — per-head input projections
+- W_O ∈ ℝ^(h·d_k × d_model) — output projection recombining all heads
+
+## Computational Cost
+
+The O(n²d) cost of attention is dominated by the n×n attention matrices. Multi-head attention with `h` heads and `d_k = d_model/h` costs the same asymptotically as single-head — but each head has its own learned subspace, giving the model `h × n` distinct attention patterns per layer.
+
+## What Do Heads Specialize In?
+
+Empirical studies (Voita et al., 2019; Clark et al., 2019) show heads in BERT develop interpretable specializations:
+- **Syntactic heads** track dependency parse relationships
+- **Coreference heads** link pronouns to their antecedents
+- **Positional heads** attend to fixed offsets (previous token, next token)
+- **Broad-context heads** spread attention nearly uniformly to gather global context
+
+This specialization is emergent — it is not explicitly trained for.
+
+<AttentionHeatmap animate />
+
+## Implementing Multi-Head Attention in NumPy
+
+```python runnable
+import numpy as np
+
+np.random.seed(0)
+n, d_model, h = 4, 8, 2
+d_k = d_model // h  # 4 dims per head
+
+X = np.random.randn(n, d_model)
+
+# Per-head projection weights
+W_Q = [np.random.randn(d_model, d_k) * 0.1 for _ in range(h)]
+W_K = [np.random.randn(d_model, d_k) * 0.1 for _ in range(h)]
+W_V = [np.random.randn(d_model, d_k) * 0.1 for _ in range(h)]
+W_O = np.random.randn(h * d_k, d_model) * 0.1  # output projection
+
+def softmax(x):
+    e = np.exp(x - x.max(axis=-1, keepdims=True))
+    return e / e.sum(axis=-1, keepdims=True)
+
+def attention(Q, K, V):
+    scores = Q @ K.T / np.sqrt(d_k)
+    return softmax(scores) @ V
+
+# Run each head independently
+head_outputs = []
+for i in range(h):
+    Q_i = X @ W_Q[i]
+    K_i = X @ W_K[i]
+    V_i = X @ W_V[i]
+    out_i = attention(Q_i, K_i, V_i)  # (n, d_k)
+    head_outputs.append(out_i)
+    print(f"Head {i+1} output shape: {out_i.shape}")
+    print(f"Head {i+1} attention pattern sample (token 0):")
+    weights = softmax((X @ W_Q[i]) @ (X @ W_K[i]).T / np.sqrt(d_k))
+    print("  ", np.round(weights[0], 3))
+
+# Concatenate all heads: (n, h*d_k) = (n, d_model)
+concat = np.concatenate(head_outputs, axis=-1)
+print(f"\\nConcatenated shape: {concat.shape}")
+
+# Project back to d_model
+output = concat @ W_O
+print(f"Final output shape: {output.shape}")
+print("Output (first token):", np.round(output[0], 3))
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "In multi-head attention with d_model=512 and h=8 heads, what is the dimensionality d_k of each head?",
+    options: ["512", "256", "64", "8"],
+    correct: 2,
+    explanation: "Each head operates on d_k = d_model / h = 512 / 8 = 64 dimensions. This keeps total computation equivalent to a single full-dimension head while enabling parallel specialization."
+  },
+  {
+    question: "What is the role of the W_O output projection matrix in multi-head attention?",
+    options: [
+      "It normalizes each head's output to unit variance",
+      "It selects which heads to include based on their relevance",
+      "It projects the concatenated head outputs back to d_model",
+      "It computes the final softmax over the vocabulary"
+    ],
+    correct: 2,
+    explanation: "After concatenating h head outputs (shape: n × h·d_k), W_O ∈ ℝ^(h·d_k × d_model) linearly mixes information across all heads and projects back to d_model, the residual stream dimension."
+  },
+  {
+    question: "Head specialization in trained transformers (e.g., coreference heads, syntactic heads) is:",
+    options: [
+      "Explicitly enforced by a separate training objective per head",
+      "An emergent phenomenon — not directly supervised",
+      "Guaranteed by the mathematical structure of multi-head attention",
+      "Only observed in encoder models, not decoders"
+    ],
+    correct: 1,
+    explanation: "Head specialization is emergent — it arises from gradient descent on the language modeling objective, not from explicit per-head supervision. Research shows BERT and GPT heads spontaneously develop interpretable roles."
+  }]
+```

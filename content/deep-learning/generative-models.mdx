@@ -1,0 +1,134 @@
+---
+title: "Generative Models"
+track: "deep-learning"
+estimatedMinutes: 13
+description: "Survey the landscape of generative modeling — VAEs, GANs, Normalizing Flows, and Diffusion Models — and understand the latent space concept that unifies them."
+---
+
+## Discriminative vs. Generative
+
+A **discriminative model** learns `P(y | x)` — the probability of a label given an input. A classifier is discriminative.
+
+A **generative model** learns `P(x)` — the distribution of the data itself. Once learned, it can:
+- Generate new, realistic samples
+- Measure the likelihood of a data point
+- Interpolate between existing examples
+- Fill in missing parts of data
+
+## The Generative Modeling Goal
+
+We have a dataset of samples from some unknown distribution `p_data(x)`. We want to train a model `p_θ(x)` (parameterized by neural network weights θ) such that `p_θ ≈ p_data`. We can then sample from `p_θ` to generate new data.
+
+For images, this is remarkably hard — the space of valid images is a tiny, complex manifold in a ~10^6 dimensional pixel space.
+
+## The Latent Space
+
+All major generative models learn a **latent space** `z` — a compact, structured lower-dimensional representation. Points `z` in latent space correspond to meaningful variations in the data. The model learns a **decoder** `p(x|z)` that maps latent vectors to data.
+
+The latent space has useful properties:
+- **Sampling**: draw `z ~ N(0, I)`, decode to get a new sample
+- **Interpolation**: linearly interpolate between two `z` vectors, decode each point to see a smooth transition between two examples
+- **Arithmetic**: in some spaces, `z(king) − z(man) + z(woman) ≈ z(queen)`
+
+## The Four Major Families
+
+**VAEs (Variational Autoencoders, 2013)**: Encoder maps `x` to a distribution over `z` (mean and variance). Decoder maps `z` back to `x`. Trained with ELBO (reconstruction loss + KL divergence regularization). Latent space is smooth and structured; samples tend to be blurry.
+
+**GANs (Generative Adversarial Networks, 2014)**: A generator network produces samples; a discriminator tries to distinguish real from fake. They play a minimax game. Produces sharp, realistic samples but training is unstable (mode collapse, vanishing gradients).
+
+**Normalizing Flows (2015+)**: Learn an invertible mapping between data and a simple distribution. Exact likelihood computation. Memory-intensive; limited to invertible architectures.
+
+**Diffusion Models (2020+)**: Gradually add noise to data, then learn to reverse the process. State-of-the-art image quality (DALL-E 2, Stable Diffusion). Slower sampling than GANs; much more stable training.
+
+## Diagram
+
+<NeuronDiagram animate />
+
+## Latent Space Sampling and Decoding
+
+```python runnable
+import numpy as np
+
+np.random.seed(99)
+
+# A toy 2D latent space encoding "brightness" and "shape" dimensions
+# Decoder: simple linear transform to simulate image pixel means
+latent_dim = 2
+output_dim = 6   # 6 "pixels" per sample
+
+# Pretend decoder weights (would be learned in a real VAE)
+W_decode = np.array([
+    [0.8, 0.2],
+    [0.6, 0.4],
+    [0.4, 0.6],
+    [0.2, 0.8],
+    [0.5, 0.5],
+    [0.3, 0.7],
+])
+b_decode = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+
+def decode(z):
+    out = W_decode @ z + b_decode
+    return np.clip(out, 0, 1)   # pixel values in [0,1]
+
+# --- Sample from latent space ---
+print("=== Sampling 4 new data points from N(0, I) ===")
+for i in range(4):
+    z = np.random.randn(latent_dim)
+    x = decode(z)
+    print(f"z={np.round(z,2)}  ->  pixels={np.round(x,3)}")
+
+# --- Latent space interpolation ---
+print("\\n=== Interpolation between two data points ===")
+z_a = np.array([-1.5,  0.5])   # "dark, round"
+z_b = np.array([ 1.5, -0.5])   # "bright, sharp"
+
+print(f"Point A: z={z_a}  pixels={np.round(decode(z_a),3)}")
+print(f"Point B: z={z_b}  pixels={np.round(decode(z_b),3)}")
+print()
+for alpha in [0.0, 0.25, 0.5, 0.75, 1.0]:
+    z_interp = (1 - alpha) * z_a + alpha * z_b
+    x_interp = decode(z_interp)
+    print(f"  alpha={alpha:.2f}  z={np.round(z_interp,2)}  pixels={np.round(x_interp,3)}")
+
+print()
+print("Smooth transition in pixel space — a property of structured latent spaces.")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What is the key property of a generative model that a discriminative model lacks?",
+    options: [
+      "The ability to output class labels",
+      "Learning P(x) — the data distribution — enabling new sample generation",
+      "Using backpropagation for training",
+      "Handling multi-class classification"
+    ],
+    correct: 1,
+    explanation: "Discriminative models learn P(y|x) — how to label inputs. Generative models learn P(x) itself, allowing them to generate new examples, assess data likelihood, and interpolate in latent space."
+  },
+  {
+    question: "What problem do GANs suffer from that diffusion models largely avoid?",
+    options: [
+      "GANs cannot generate images at high resolution",
+      "GANs require explicit likelihood computation",
+      "GAN training is unstable and prone to mode collapse",
+      "GANs cannot learn a latent space"
+    ],
+    correct: 2,
+    explanation: "GAN training is a minimax game — the generator and discriminator can fail to converge, with the generator collapsing to producing only a few modes of the data distribution. Diffusion models optimize a stable denoising objective."
+  },
+  {
+    question: "What does smooth interpolation between two points in latent space demonstrate?",
+    options: [
+      "That the model has memorized training examples",
+      "That the latent space has learned a structured, continuous representation of the data",
+      "That the decoder is non-linear",
+      "That the model overfits to the training distribution"
+    ],
+    correct: 1,
+    explanation: "If two points in latent space decode to two valid examples, and intermediate points decode to semantically meaningful transitions, the latent space has captured continuous structure — not just memorization of training points."
+  }]
+```

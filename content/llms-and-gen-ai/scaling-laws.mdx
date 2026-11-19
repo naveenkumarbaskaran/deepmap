@@ -1,0 +1,148 @@
+---
+title: "Scaling Laws"
+track: "llms-and-gen-ai"
+estimatedMinutes: 11
+description: "How model loss scales as a power law with compute, data, and parameters — the Kaplan and Chinchilla findings, optimal compute allocation, emergent abilities, and the limits of scaling."
+---
+
+## Loss Follows a Power Law
+
+One of the most important empirical findings in modern deep learning: language model loss scales **predictably** with compute budget, dataset size, and parameter count — following smooth power laws of the form:
+
+```
+L(X) = (X₀ / X)^α
+```
+
+Where `X` is compute, data, or parameters, and `α` is a small positive exponent (~0.05–0.1). This means you can **predict** how much better a larger model will be before training it — a remarkable property that shapes how frontier labs allocate resources.
+
+## Kaplan et al. (2020): OpenAI Scaling Laws
+
+Kaplan et al. found that for a fixed compute budget `C`:
+- Loss improves as a power law with each of N (parameters), D (tokens), and C (FLOPs).
+- **Parameters matter more than data**: at a fixed compute budget, it's better to train a larger model on fewer tokens than a smaller model to convergence.
+- The findings suggested allocating most compute to model size.
+
+<TransformerBlock animate />
+
+## Chinchilla (2022): Data Is Equally Important
+
+Hoffmann et al. (DeepMind) challenged the Kaplan result. Training **Chinchilla** (70B parameters) on 1.4T tokens, they showed it outperformed GPT-3 (175B) trained on only 300B tokens — with 2.5× fewer parameters and the same compute.
+
+**Chinchilla optimal allocation**: for a compute budget C (in FLOPs), optimal model size N* and token count D* scale as:
+
+```
+N* ≈ (C / 6)^0.5    D* ≈ (C / 6)^0.5    →    D* / N* ≈ 20 tokens/param
+```
+
+The rule of thumb: **train on roughly 20 tokens per parameter**. A 7B-parameter model trained optimally needs ~140B tokens. Most pre-Chinchilla models were significantly undertrained.
+
+## Emergent Abilities
+
+Some capabilities appear abruptly above a critical scale threshold rather than improving smoothly. These **emergent abilities** include:
+- Multi-step arithmetic reasoning
+- Chain-of-thought problem solving
+- In-context learning from examples
+
+Whether emergence is a genuine phase transition or an artifact of coarse evaluation metrics is debated. Some researchers argue that with more granular metrics, capabilities improve smoothly throughout.
+
+## What Scales and What Doesn't
+
+**Scales reliably**: next-token prediction loss, broad language understanding, factual recall, few-shot task performance.
+
+**Does not scale straightforwardly**: reasoning robustness, factual accuracy (hallucination), instruction following (requires RLHF/SFT on top of pretraining), multi-step planning.
+
+## The Data Wall
+
+Training data requirements under Chinchilla scaling grow proportionally with model size. A 1T-parameter model would need ~20T tokens of high-quality text — approaching the estimated size of the high-quality filtered internet. This **data wall** is driving interest in:
+- Synthetic data generation (using LLMs to produce training data)
+- Repeated data epochs (with diminishing returns)
+- Multimodal and code data as augmentation
+
+## Chinchilla Scaling Predictions — Code
+
+```python runnable
+import numpy as np
+
+# Chinchilla scaling law constants (Hoffmann et al. 2022, Table A3)
+# L(N, D) ≈ E + A/N^alpha + B/D^beta
+E     = 1.69   # irreducible loss (entropy of natural language)
+A     = 406.4
+B     = 410.7
+alpha = 0.3392
+beta  = 0.3681
+
+def chinchilla_loss(N, D):
+    """Predict cross-entropy loss given N params and D training tokens."""
+    return E + A / (N ** alpha) + B / (D ** beta)
+
+def optimal_allocation(C_flops):
+    """
+    Chinchilla optimal N* and D* for a compute budget C (FLOPs).
+    Assumes ~6*N*D FLOPs for a training run.
+    Returns (N*, D*, predicted_loss)
+    """
+    # Optimal: N* = (C/6)^0.5 when alpha == beta (approximate)
+    # More precisely from paper: N* = G * (C/6)^a, D* = C/(6*N*)
+    G = (A * alpha / (B * beta)) ** (1 / (alpha + beta))
+    N_opt = G * (C_flops / 6) ** (beta / (alpha + beta))
+    D_opt = C_flops / (6 * N_opt)
+    loss   = chinchilla_loss(N_opt, D_opt)
+    return N_opt, D_opt, loss
+
+print("Chinchilla optimal allocation by compute budget:")
+print(f"{'Compute (FLOPs)':>20} | {'Params (B)':>12} | {'Tokens (B)':>12} | {'Tokens/Param':>13} | {'Loss':>8}")
+print("-" * 75)
+
+budgets = {
+    "1e21 (GPT-3 scale)": 1e21,
+    "1e22":               1e22,
+    "1e23":               1e23,
+    "1e24 (frontier)":    1e24,
+}
+for label, C in budgets.items():
+    N, D, loss = optimal_allocation(C)
+    print(f"{label:>20} | {N/1e9:>12.1f} | {D/1e9:>12.1f} | {D/N:>13.1f} | {loss:>8.4f}")
+
+# Show power-law loss improvement with scale
+print("\\nLoss vs model size (Chinchilla-optimal data for each):")
+for N_B in [1, 7, 70, 700]:
+    N = N_B * 1e9
+    D = 20 * N   # ~Chinchilla rule of thumb
+    print(f"  {N_B:>5}B params, {N_B*20:>6}B tokens  =>  loss = {chinchilla_loss(N, D):.4f}")
+```
+
+```quiz
+[{
+    question: "What was the key correction the Chinchilla paper made to the original OpenAI scaling law findings?",
+    options: [
+      "Compute should be allocated entirely to dataset size, not model parameters",
+      "Data and model size are equally important — most pre-Chinchilla models were undertrained",
+      "Scaling laws only hold for models above 100 billion parameters",
+      "The power-law exponents are constant across all model architectures"
+    ],
+    correct: 1,
+    explanation: "Hoffmann et al. showed that the optimal strategy is to scale model size and data proportionally (~20 tokens per parameter). Earlier work (Kaplan et al.) had underweighted data, leading to large models trained on too few tokens. Chinchilla (70B, 1.4T tokens) outperformed GPT-3 (175B, 300B tokens) with 2.5× fewer parameters."
+  },
+  {
+    question: "According to Chinchilla scaling, how many training tokens are optimal for a 7B-parameter model?",
+    options: [
+      "Approximately 7 billion tokens (1 token per parameter)",
+      "Approximately 70 billion tokens (10 tokens per parameter)",
+      "Approximately 140 billion tokens (20 tokens per parameter)",
+      "Approximately 700 billion tokens (100 tokens per parameter)"
+    ],
+    correct: 2,
+    explanation: "The Chinchilla rule of thumb is ~20 tokens per parameter. For a 7B model: 7B × 20 = 140B tokens. This is the compute-optimal point; training for more tokens on the same model continues to improve loss but is not compute-efficient relative to training a larger model."
+  },
+  {
+    question: "What is the 'data wall' in LLM scaling?",
+    options: [
+      "The maximum context length a transformer can process due to quadratic attention",
+      "The point at which adding more layers causes gradient vanishing",
+      "The exhaustion of high-quality training data as model token requirements approach available internet text",
+      "The hardware memory limit that prevents training beyond a certain batch size"
+    ],
+    correct: 2,
+    explanation: "Under Chinchilla scaling, training data requirements grow proportionally with model size (~20 tokens/param). Very large models would require more high-quality text than feasibly exists on the internet, creating a data wall that drives interest in synthetic data, multimodal training, and repeated-epoch strategies."
+  }]
+```

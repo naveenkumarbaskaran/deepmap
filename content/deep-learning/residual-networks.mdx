@@ -1,0 +1,152 @@
+---
+title: "Residual Networks"
+track: "deep-learning"
+estimatedMinutes: 11
+description: "Understand why very deep networks degrade, how skip connections fix gradient flow, and how ResNet's bottleneck blocks enable training networks with 50–152+ layers."
+---
+
+## The Degradation Problem
+
+A naive assumption: adding more layers should help — a deeper network can at worst learn identity mappings for the extra layers. In practice, optimizing very deep networks is hard. Beyond ~20 layers, accuracy saturates and then **degrades** even on the training set. This is not overfitting — it is an optimization problem. The network fails to learn the identity function through stacked non-linear layers.
+
+## The Residual Connection
+
+He et al. (2015) introduced a simple fix: instead of learning a mapping `H(x)` directly, learn the **residual** `F(x) = H(x) − x` and add the input back:
+
+```
+output = F(x, {W}) + x
+```
+
+The `+ x` is a **skip connection** (also called a shortcut). If the optimal transformation is close to identity, the network just needs `F(x) ≈ 0` — much easier to learn than `H(x) ≈ x` from scratch.
+
+## Why Skip Connections Help Gradient Flow
+
+During backpropagation, the gradient through a residual block is:
+
+```
+∂loss/∂x = ∂loss/∂output · (∂F/∂x + 1)
+```
+
+The `+1` term ensures the gradient is never completely zeroed by the learned branch `F`. Even if `∂F/∂x ≈ 0`, the gradient highway through the skip connection keeps the signal alive — allowing effective training of 50, 100, or even 1,000+ layer networks.
+
+## Bottleneck Blocks
+
+For deeper ResNets (ResNet-50 and above), a 3-layer **bottleneck block** replaces the 2-layer basic block:
+
+1. `1×1 conv` — reduce channels (e.g., 256 → 64)
+2. `3×3 conv` — learn spatial features at reduced cost
+3. `1×1 conv` — restore channels (64 → 256)
+
+The 1×1 convolutions act as channel-wise projections, cutting computation by ~4× while keeping the receptive field the same.
+
+## Related Architectures
+
+**Highway Networks** (2015) used learned gating on the skip connection (like LSTM gates). ResNets simplified this to a fixed, unweighted addition — and worked better in practice.
+
+**DenseNet** (2017) extends the idea: every layer is connected to every subsequent layer, concatenating (not adding) feature maps. This maximizes gradient flow and feature reuse but increases memory.
+
+## ResNet in Practice
+
+| Model | Layers | Params | ImageNet Top-1 |
+|-------|--------|--------|----------------|
+| ResNet-18 | 18 | 11M | 69.8% |
+| ResNet-50 | 50 | 25M | 76.1% |
+| ResNet-152 | 152 | 60M | 78.3% |
+
+## Diagram
+
+<NeuronDiagram animate />
+
+## Residual Block Forward Pass
+
+```python runnable
+import numpy as np
+
+def relu(x):
+    return np.maximum(0, x)
+
+def batch_norm_simple(x):
+    """Simplified batch norm: zero-mean, unit variance."""
+    return (x - x.mean()) / (x.std() + 1e-8)
+
+def residual_block(x, W1, W2):
+    """
+    Basic ResNet residual block:
+      F(x) = W2 * relu(BN(W1 * x))
+      output = relu(F(x) + x)
+    """
+    # First conv (simulated as matrix multiply for 1D vectors)
+    out = relu(batch_norm_simple(W1 @ x))
+    # Second conv
+    out = batch_norm_simple(W2 @ out)
+    # Skip connection: add input to residual
+    out = relu(out + x)
+    return out
+
+np.random.seed(3)
+dim = 8   # feature dimension
+
+# Two weight matrices (simulating conv filters)
+W1 = np.random.randn(dim, dim) * 0.1
+W2 = np.random.randn(dim, dim) * 0.1
+
+x = np.random.randn(dim)
+
+print("Input x:")
+print(np.round(x, 3))
+
+F_x = relu(batch_norm_simple(W1 @ x))
+F_x = batch_norm_simple(W2 @ F_x)
+print("\\nResidual F(x) (what the block must learn):")
+print(np.round(F_x, 3))
+
+output = relu(F_x + x)
+print("\\nOutput F(x) + x (skip connection applied):")
+print(np.round(output, 3))
+
+# Demonstrate gradient highway
+print("\\n--- Gradient check ---")
+grad_output = np.ones(dim)
+# Gradient through skip branch = 1 (identity, unaffected by F)
+grad_skip = grad_output.copy()
+print(f"Gradient via skip connection (always 1 per unit): {np.round(grad_skip, 3)}")
+print("This persists regardless of W1/W2 values -> no vanishing gradient.")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What is the degradation problem in very deep networks?",
+    options: [
+      "Overfitting caused by too many parameters",
+      "Training accuracy worsens when adding more layers, due to optimization difficulty",
+      "Memory overflow on GPUs",
+      "Vanishing gradients only in the last layer"
+    ],
+    correct: 1,
+    explanation: "Degradation is not overfitting — training accuracy itself drops with more layers. The network struggles to optimize, failing even to learn identity mappings for the extra layers."
+  },
+  {
+    question: "What does a residual block learn, compared to a plain block?",
+    options: [
+      "The full mapping H(x) from input to output",
+      "The residual F(x) = H(x) − x, with the input added back via a skip connection",
+      "A gated version of the input using learned sigmoid weights",
+      "The inverse mapping from output back to input"
+    ],
+    correct: 1,
+    explanation: "The block learns F(x) = H(x) − x. The final output is F(x) + x. If H(x) should be identity, the block just needs to learn F(x) ≈ 0 — a much easier optimization target."
+  },
+  {
+    question: "Why do 1×1 convolutions appear in ResNet-50 bottleneck blocks?",
+    options: [
+      "To increase spatial resolution",
+      "To apply non-linearities without changing channels",
+      "To reduce and then restore channel dimensions, cutting computational cost",
+      "To replace max pooling"
+    ],
+    correct: 2,
+    explanation: "The 1×1 convolutions compress channels (e.g., 256→64) before the 3×3 conv, then expand back (64→256). This bottleneck reduces FLOPs by ~4× while preserving the network's expressive capacity."
+  }]
+```

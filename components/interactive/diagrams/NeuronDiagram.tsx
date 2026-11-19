@@ -37,7 +37,7 @@ export function NeuronDiagram({ layers = [2, 4, 3, 1], animate = true }: NeuronD
   const TRACK_COLORS = ["#6366f1", "#8b5cf6", "#3b82f6", "#10b981"];
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "#080810" }}>
+    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
         {/* Edges */}
         {edges.map(([from, to], i) => (

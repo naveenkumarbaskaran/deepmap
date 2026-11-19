@@ -1,0 +1,123 @@
+---
+title: "Weight Initialization"
+track: "neural-networks"
+estimatedMinutes: 9
+description: "Why initialization matters, vanishing and exploding gradients, Xavier/Glorot and He initialization, and variance scaling principles."
+---
+
+## Why Initialization Matters
+
+Before any gradient step, the network's weights determine how signals flow through the layers. Poor initialization corrupts both the forward pass (activations collapse to zero or explode to infinity) and the backward pass (gradients vanish or explode). This makes training stall long before it converges.
+
+The core insight: each layer multiplies its input by a weight matrix. If those weights are systematically too small, activations shrink with depth. Too large, and they grow uncontrollably. Neither case produces useful gradients.
+
+## Vanishing and Exploding Gradients
+
+Consider a 20-layer network initialized with weights drawn from `N(0, 1)`. The variance of the output of a layer with fan-in `n` is roughly `n · Var(w)` times the input variance. Multiply that across 20 layers and the activations either saturate (tanh, sigmoid) or diverge. The backward pass is worse: gradient norms shrink or explode at the same rate, multiplied through every layer's Jacobian.
+
+## Xavier / Glorot Initialization
+
+Glorot and Bengio (2010) derived the ideal weight variance to keep activations and gradients stable throughout training. For a layer with `fan_in` inputs and `fan_out` outputs, they set:
+
+```
+Var(w) = 2 / (fan_in + fan_out)
+```
+
+The factor of 2 in the numerator (sometimes written as 1 divided by the average of fan-in and fan-out) ensures that the variance of activations remains roughly 1 across layers for tanh-like activations. Weights are drawn from either a uniform or normal distribution scaled to this variance.
+
+Xavier initialization assumes linear or approximately linear activations (tanh, sigmoid near origin). It fails for ReLU, which zeroes out half its inputs.
+
+## He Initialization
+
+He et al. (2015) adjusted for ReLU. Because ReLU passes only positive inputs through, it halves the effective variance of each layer. The corrected formula doubles the numerator:
+
+```
+Var(w) = 2 / fan_in
+```
+
+This is the standard choice for networks using ReLU or Leaky ReLU. For ELU activations, a similar constant applies. The principle is the same: scale the variance to compensate for the nonlinearity's effect on signal magnitude.
+
+## Orthogonal Initialization
+
+For RNNs and very deep networks, orthogonal initialization draws weight matrices from the set of orthogonal matrices (via QR decomposition of a random Gaussian matrix). An orthogonal matrix has unit singular values, so it neither amplifies nor attenuates signal magnitude. It is especially effective for preserving gradient flow in recurrent networks where weights are applied repeatedly over time steps.
+
+<NeuronDiagram animate />
+
+## Interactive Code
+
+```python runnable
+import numpy as np
+
+np.random.seed(0)
+n_layers = 10
+n_units = 128
+n_samples = 500
+
+def run_forward(W_init_fn):
+    x = np.random.randn(n_samples, n_units)
+    variances = [x.var()]
+    for _ in range(n_layers):
+        W = W_init_fn(n_units, n_units)
+        x = np.maximum(0, x @ W)   # ReLU activation
+        variances.append(x.var())
+    return variances
+
+# --- Xavier init (wrong for ReLU) ---
+xavier = lambda fi, fo: np.random.randn(fi, fo) * np.sqrt(2.0 / (fi + fo))
+
+# --- He init (correct for ReLU) ---
+he     = lambda fi, fo: np.random.randn(fi, fo) * np.sqrt(2.0 / fi)
+
+# --- Too small (naive) ---
+naive  = lambda fi, fo: np.random.randn(fi, fo) * 0.01
+
+var_xavier = run_forward(xavier)
+var_he     = run_forward(he)
+var_naive  = run_forward(naive)
+
+print(f"{'Layer':<8} {'Xavier':>10} {'He':>12} {'Naive (0.01)':>14}")
+print("-" * 48)
+for i, (vx, vh, vn) in enumerate(zip(var_xavier, var_he, var_naive)):
+    print(f"{i:<8} {vx:>10.4f} {vh:>12.4f} {vn:>14.6f}")
+
+print("\\nHe init keeps variance stable across layers for ReLU.")
+print("Xavier decays; naive collapses to near-zero by layer 2.")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What problem does Xavier initialization solve that naive small-weight initialization does not?",
+    options: [
+      "It prevents weights from becoming negative",
+      "It scales weight variance so activation variance stays approximately constant across layers",
+      "It ensures all weights start at exactly zero",
+      "It adds L2 regularization automatically"
+    ],
+    correct: 1,
+    explanation: "Xavier initialization sets Var(w) = 2/(fan_in + fan_out) so the variance of activations neither grows nor shrinks as signals pass through each layer. Naive small weights cause activations to collapse, making gradient signals vanish before they can update early layers."
+  },
+  {
+    question: "Why does He initialization use Var(w) = 2/fan_in rather than Xavier's 2/(fan_in + fan_out)?",
+    options: [
+      "He initialization is designed for sigmoid activations",
+      "ReLU zeroes negative inputs, halving effective variance — the extra factor of 2 compensates",
+      "He initialization targets fan_out instead of fan_in",
+      "The fan_out is irrelevant in He initialization because outputs are fixed"
+    ],
+    correct: 1,
+    explanation: "ReLU discards negative values, which cuts the effective variance of each layer's output roughly in half compared to a linear activation. Doubling the numerator to 2/fan_in compensates for this loss, keeping activation variance stable through deep ReLU networks."
+  },
+  {
+    question: "When is orthogonal initialization most beneficial?",
+    options: [
+      "Convolutional layers in image classifiers",
+      "Embedding layers in language models",
+      "Recurrent networks where the same weight matrix is applied at every time step",
+      "Output layers with softmax activation"
+    ],
+    correct: 2,
+    explanation: "In RNNs, the recurrent weight matrix is multiplied with itself at each time step. Orthogonal matrices have unit singular values, so they neither amplify nor attenuate signals across arbitrarily many time steps — making them far more stable than randomly scaled matrices for recurrent connections."
+  }]
+```

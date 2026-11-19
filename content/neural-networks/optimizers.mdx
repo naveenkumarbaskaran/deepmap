@@ -1,0 +1,176 @@
+---
+title: "Optimizers"
+track: "neural-networks"
+estimatedMinutes: 13
+description: "SGD to AdamW: how each optimizer navigates the loss landscape, why adaptive learning rates matter, and how learning rate schedules and warmup fit into the picture."
+---
+
+## The Goal of an Optimizer
+
+Training a neural network is an optimisation problem: minimise loss L(θ) by adjusting parameters θ. Gradient descent is the core idea — move θ in the direction of steepest descent. The difference between optimizers is *how* they use gradient history to shape each step.
+
+## Stochastic Gradient Descent (SGD)
+
+**Vanilla SGD** updates parameters with a single gradient estimate from a minibatch:
+
+```
+θ ← θ − η · ∇L(θ)
+```
+
+It is noisy (hence "stochastic") but that noise helps escape shallow local minima. The main weakness: a fixed learning rate η works poorly across all parameter dimensions — wide ravines in the loss landscape cause slow progress and oscillation.
+
+**SGD with Momentum** adds a velocity term that accumulates past gradients:
+
+```
+v ← β·v + ∇L(θ)
+θ ← θ − η·v
+```
+
+Momentum (typically β = 0.9) smooths oscillations and accelerates progress along consistent gradient directions, like a ball rolling downhill.
+
+## RMSProp
+
+RMSProp adapts the learning rate per parameter by dividing by the root mean square of recent gradients:
+
+```
+s ← ρ·s + (1−ρ)·(∇L)²
+θ ← θ − (η / √(s + ε)) · ∇L
+```
+
+Parameters with large, consistent gradients get smaller effective steps; those with small gradients get larger ones. This is especially useful in RNNs with highly non-uniform gradient magnitudes.
+
+## Adam — The Standard
+
+**Adam** (Adaptive Moment Estimation) combines momentum (first moment) and RMSProp (second moment):
+
+```
+m ← β₁·m + (1−β₁)·∇L          ← biased first moment
+v ← β₂·v + (1−β₂)·(∇L)²       ← biased second moment
+m̂ = m / (1−β₁ᵗ)               ← bias correction
+v̂ = v / (1−β₂ᵗ)
+θ ← θ − η · m̂ / (√v̂ + ε)
+```
+
+The bias correction (dividing by 1−βᵗ) is crucial at step 1 — without it, m and v start near zero and the first steps are far too small. Defaults: β₁=0.9, β₂=0.999, ε=1e-8.
+
+Adam is the default for most deep learning work. It is robust to hyperparameter choices and handles sparse gradients well.
+
+## AdamW — Adam with Proper Weight Decay
+
+Standard Adam folds L2 regularisation into the gradient, which interacts badly with the adaptive scaling: parameters with small gradients receive proportionally larger weight decay. **AdamW** decouples weight decay from the gradient update:
+
+```
+θ ← θ − η · m̂ / (√v̂ + ε) − η·λ·θ
+```
+
+The last term is weight decay applied directly to the parameter, independent of the gradient history. AdamW is now the standard for training transformers and large language models.
+
+## Learning Rate Schedules and Warmup
+
+A fixed learning rate is rarely optimal. Common schedules:
+
+- **Cosine annealing**: η decays from ηₘₐₓ to 0 following a cosine curve — smooth, widely used.
+- **Linear warmup**: start with a very small η and ramp it up over the first N steps. This prevents large unstable updates early in training when the model is far from a good solution and gradients are noisy.
+- **Warmup + cosine decay**: the standard for transformers — ramp up for ~5% of total steps, then cosine decay to completion.
+
+<NeuronDiagram animate />
+
+## Code: SGD and Adam from Scratch
+
+```python runnable
+import numpy as np
+
+np.random.seed(0)
+
+# ── Toy loss: f(w) = (w - 3)^2  — minimum at w=3 ─────────────────────────────
+def loss(w):       return (w - 3.0)**2
+def gradient(w):   return 2.0 * (w - 3.0)
+
+# ── SGD with momentum ─────────────────────────────────────────────────────────
+def sgd_momentum(w0=0.0, lr=0.1, beta=0.9, steps=20):
+    w, v = w0, 0.0
+    traj = []
+    for _ in range(steps):
+        g = gradient(w)
+        v = beta * v + g
+        w = w - lr * v
+        traj.append((w, loss(w)))
+    return traj
+
+# ── Adam ──────────────────────────────────────────────────────────────────────
+def adam(w0=0.0, lr=0.1, b1=0.9, b2=0.999, eps=1e-8, steps=20):
+    w, m, v = w0, 0.0, 0.0
+    traj = []
+    for t in range(1, steps + 1):
+        g = gradient(w)
+        m = b1 * m + (1 - b1) * g
+        v = b2 * v + (1 - b2) * g**2
+        m_hat = m / (1 - b1**t)   # bias correction
+        v_hat = v / (1 - b2**t)
+        w = w - lr * m_hat / (np.sqrt(v_hat) + eps)
+        traj.append((w, loss(w)))
+    return traj
+
+sgd_traj  = sgd_momentum()
+adam_traj = adam()
+
+print(f"{'Step':>5}  {'SGD-mom w':>10}  {'SGD loss':>10}  {'Adam w':>10}  {'Adam loss':>10}")
+print("-" * 55)
+for i, (s, a) in enumerate(zip(sgd_traj, adam_traj)):
+    if i < 5 or i == 19:
+        print(f"{i+1:>5}  {s[0]:>10.5f}  {s[1]:>10.6f}  {a[0]:>10.5f}  {a[1]:>10.6f}")
+    elif i == 5:
+        print("  ...")
+
+# ── Cosine LR schedule ────────────────────────────────────────────────────────
+print("\\nLR schedule (cosine with warmup):")
+total_steps, warmup_steps = 100, 10
+lrs = []
+for t in range(total_steps):
+    if t < warmup_steps:
+        lr = 0.1 * t / warmup_steps
+    else:
+        progress = (t - warmup_steps) / (total_steps - warmup_steps)
+        lr = 0.5 * 0.1 * (1 + np.cos(np.pi * progress))
+    lrs.append(lr)
+
+for t in [0, 5, 10, 25, 50, 75, 99]:
+    bar = "▓" * int(lrs[t] * 150)
+    print(f"  step {t:>3}: lr={lrs[t]:.5f}  {bar}")
+```
+
+```quiz
+[{
+    question: "Why does Adam include bias correction terms (dividing by 1−βᵗ)?",
+    options: [
+      "To normalise gradients to unit length",
+      "To compensate for the fact that m and v are initialised to zero, making early estimates too small",
+      "To prevent weight decay from interacting with the adaptive step",
+      "To ensure the learning rate never exceeds the initial value"
+    ],
+    correct: 1,
+    explanation: "At step 1, m = (1−β₁)·g and v = (1−β₂)·g² — both heavily biased toward zero. Dividing by (1−β₁ᵗ) and (1−β₂ᵗ) corrects for this initialisation bias, giving more accurate moment estimates early in training."
+  },
+  {
+    question: "What is the key difference between Adam and AdamW?",
+    options: [
+      "AdamW uses a different β₁ value",
+      "AdamW decouples weight decay from the adaptive gradient update",
+      "AdamW does not use bias correction",
+      "AdamW replaces the second moment with gradient clipping"
+    ],
+    correct: 1,
+    explanation: "In standard Adam, L2 regularisation is added to the gradient before the adaptive scaling, so the effective weight decay varies per parameter. AdamW applies weight decay directly to the parameter as a separate term, making it uniform and consistent with the original regularisation intent."
+  },
+  {
+    question: "Why is a linear warmup phase used at the start of transformer training?",
+    options: [
+      "To ensure the bias correction terms stabilise before large updates occur",
+      "To prevent the cosine schedule from overshooting",
+      "To avoid large noisy updates when the model and gradient estimates are poorly initialised",
+      "To satisfy the requirements of the AdamW weight decay term"
+    ],
+    correct: 2,
+    explanation: "Early in training, the model is far from any good solution and gradient estimates are unreliable. Starting with a very small learning rate and ramping it up prevents destabilising parameter updates during this sensitive period, leading to more stable and faster overall training."
+  }]
+```

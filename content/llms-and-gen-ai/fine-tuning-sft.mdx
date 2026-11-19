@@ -1,0 +1,158 @@
+---
+title: "Fine-Tuning (SFT)"
+track: "llms-and-gen-ai"
+estimatedMinutes: 12
+description: "Learn how supervised fine-tuning adapts pre-trained LLMs to follow instructions, and how LoRA and QLoRA make it practical without full parameter updates."
+---
+
+## What Is Supervised Fine-Tuning?
+
+Supervised Fine-Tuning (SFT) adapts a pre-trained LLM to a specific behavior by continuing training on a curated dataset of (prompt, completion) pairs. The objective is identical to pre-training — minimize next-token prediction loss — but the data is high-quality human demonstrations rather than raw web text.
+
+SFT is the step that turns a next-token predictor into an instruction-following assistant. Models like GPT-4 and Claude are pre-trained first, then SFT'd on instruction datasets, then further aligned with RLHF or DPO.
+
+## Instruction Datasets
+
+An instruction dataset looks like:
+
+```json
+{
+  "prompt": "Summarize the following article in 3 bullet points:\n<article>...",
+  "completion": "• Key point 1\n• Key point 2\n• Key point 3"
+}
+```
+
+Quality trumps quantity. A few thousand high-quality demonstrations (e.g., FLAN, Alpaca, OpenHermes) often outperforms millions of noisy ones. Data diversity — covering many task types, domains, and output formats — improves generalization.
+
+## Full Fine-Tuning vs LoRA
+
+**Full fine-tuning** updates all model parameters. For a 7B-parameter model at fp16, that's ~14 GB of weights plus optimizer states (~56 GB for Adam) — requiring multiple high-VRAM GPUs and long training runs.
+
+**LoRA (Low-Rank Adaptation)** freezes all original weights and injects small trainable rank-decomposition matrices into the attention layers:
+
+```
+W_full ≈ W_frozen + ΔW = W_frozen + A × B
+```
+
+Where A ∈ ℝ^(d×r) and B ∈ ℝ^(r×k), with rank r ≪ min(d, k). Training only A and B reduces trainable parameters by 100–10,000×.
+
+**QLoRA** quantizes the frozen base model to 4-bit (NF4) while keeping LoRA adapters in bf16. This fits a 65B model on a single 48 GB GPU. The quantization noise is small enough that QLoRA matches full fine-tuning on most benchmarks.
+
+**PEFT (Parameter-Efficient Fine-Tuning)** is the umbrella term — LoRA, QLoRA, prefix tuning, adapters, and prompt tuning all fall under it.
+
+<TransformerBlock animate />
+
+## When to Fine-Tune vs Prompt
+
+| Signal | Use Prompting | Use Fine-Tuning |
+|---|---|---|
+| Data available | < 100 examples | > 500 examples |
+| Task changes frequently | ✓ | — |
+| Latency is critical | — | ✓ (no long prompt) |
+| Consistent output format required | — | ✓ |
+| Budget | Low | Higher |
+
+## Catastrophic Forgetting
+
+Full fine-tuning on a narrow dataset can degrade performance on tasks not represented in the fine-tuning set — a phenomenon called **catastrophic forgetting**. Mitigations include:
+
+- **LoRA** — frozen base weights preserve general knowledge; only adapters change.
+- **Data mixing** — blend fine-tuning data with a small fraction of general pre-training data.
+- **Elastic Weight Consolidation (EWC)** — penalizes updates to weights important for prior tasks.
+
+## LoRA Decomposition — Numpy Implementation
+
+```python runnable
+import numpy as np
+
+np.random.seed(42)
+
+# Simulate a weight matrix from an attention layer (d_model x d_model)
+d, k = 768, 768
+rank = 8  # LoRA rank — typical values: 4, 8, 16, 32
+
+# Original frozen weight matrix
+W_frozen = np.random.randn(d, k) * 0.02
+
+# LoRA adapter matrices (initialized: A ~ N(0,0.01), B = 0)
+A = np.random.randn(d, rank) * 0.01   # shape: (d, r)
+B = np.zeros((rank, k))               # shape: (r, k)
+
+# Effective weight = frozen + low-rank delta
+delta_W = A @ B  # shape: (d, k)
+W_effective = W_frozen + delta_W
+
+# Parameter counts
+total_params = d * k
+lora_params = d * rank + rank * k
+savings_pct = (1 - lora_params / total_params) * 100
+
+print(f"Weight matrix shape:        {d} x {k}")
+print(f"LoRA rank:                  {rank}")
+print()
+print(f"Full fine-tuning params:    {total_params:,}")
+print(f"LoRA trainable params:      {lora_params:,}  (A: {d*rank:,} + B: {rank*k:,})")
+print(f"Parameter reduction:        {savings_pct:.1f}%")
+print()
+
+# Show that at init, delta_W ≈ 0 (B is zero-initialized)
+print(f"||delta_W|| at init:         {np.linalg.norm(delta_W):.6f}  (≈ 0, as intended)")
+
+# Simulate one gradient step on A and B
+grad_A = np.random.randn(*A.shape) * 0.001
+grad_B = np.random.randn(*B.shape) * 0.001
+lr = 1e-3
+
+A -= lr * grad_A
+B -= lr * grad_B
+
+delta_W_after = A @ B
+print(f"||delta_W|| after 1 step:    {np.linalg.norm(delta_W_after):.6f}  (small, controlled update)")
+
+# Scale comparison: for a 7B model (32 layers, 4 projections each)
+num_lora_layers = 32 * 4
+total_lora = num_lora_layers * lora_params
+total_full = num_lora_layers * total_params
+print()
+print(f"For a 7B model ({num_lora_layers} LoRA layers):")
+print(f"  Full fine-tuning params:  {total_full/1e6:.0f}M")
+print(f"  LoRA trainable params:    {total_lora/1e6:.1f}M  ({total_lora/total_full*100:.1f}% of full)")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "In LoRA, which matrices are updated during fine-tuning?",
+    options: [
+      "The original pre-trained weight matrices W_frozen",
+      "Only the bias terms of the attention layers",
+      "The low-rank adapter matrices A and B, while W_frozen stays fixed",
+      "All parameters, but with a lower learning rate"
+    ],
+    correct: 2,
+    explanation: "LoRA freezes the original weights and trains only the small A and B matrices. The effective weight is W_frozen + A×B, so the base model's knowledge is preserved while the adapter shifts its behavior."
+  },
+  {
+    question: "What is the primary advantage of QLoRA over standard LoRA?",
+    options: [
+      "QLoRA achieves higher accuracy on all tasks",
+      "QLoRA quantizes the frozen base model to 4-bit, drastically reducing GPU memory",
+      "QLoRA uses a higher rank, capturing more complex adaptations",
+      "QLoRA eliminates the need for instruction datasets"
+    ],
+    correct: 1,
+    explanation: "QLoRA quantizes the frozen base weights to 4-bit NF4 format, cutting GPU memory by ~4×. This allows fine-tuning models like LLaMA-65B on a single 48 GB GPU while preserving most of the accuracy of full fine-tuning."
+  },
+  {
+    question: "What is catastrophic forgetting in the context of LLM fine-tuning?",
+    options: [
+      "The model forgets the fine-tuning data between training runs",
+      "Fine-tuning on a narrow dataset degrades performance on tasks not in that dataset",
+      "The optimizer loses its momentum state when training resumes",
+      "Gradient explosion causing NaN weights"
+    ],
+    correct: 1,
+    explanation: "Catastrophic forgetting occurs when full fine-tuning overwrites weights critical for general capabilities. LoRA mitigates this by keeping the base weights frozen and only updating small adapter matrices."
+  }]
+```

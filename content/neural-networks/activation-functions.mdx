@@ -1,0 +1,132 @@
+---
+title: "Activation Functions"
+track: "neural-networks"
+estimatedMinutes: 10
+description: "Why nonlinearity is essential, and how sigmoid, tanh, ReLU, GELU, and softmax each make different engineering trade-offs. Includes the dying ReLU problem and vanishing gradients."
+---
+
+## Why Nonlinearity?
+
+Without activation functions, stacking layers is pointless. The composition of linear maps is still linear: W₂(W₁x) = (W₂W₁)x, which collapses to a single matrix multiply. Nonlinear activations break this — each layer genuinely learns a new representation.
+
+The choice of activation shapes training dynamics: how fast gradients flow, whether neurons "die", and how well the model scales to depth.
+
+## Sigmoid and Tanh — The Classics
+
+**Sigmoid** σ(x) = 1/(1+e⁻ˣ) squashes all inputs to (0, 1). It was the default in early networks, but has two problems:
+
+- **Vanishing gradients**: the gradient σ′(x) = σ(x)(1−σ(x)) peaks at 0.25 and decays exponentially away from zero. After 10 layers, gradients become numerically zero.
+- **Non-zero centred**: outputs are always positive, so weight gradients all share the same sign — slowing convergence.
+
+**Tanh** maps to (−1, 1) and is zero-centred, fixing the sign issue. But it still saturates at large |x|, so the vanishing gradient problem remains.
+
+Both functions are still used in specific roles: sigmoid for binary classification outputs, tanh inside LSTMs.
+
+## ReLU and Its Variants
+
+**ReLU** (Rectified Linear Unit): f(x) = max(0, x)
+
+ReLU is fast to compute, does not saturate for positive inputs, and empirically trains deep networks much better than sigmoid or tanh. The gradient is 1 for x > 0 and 0 for x ≤ 0 — clean and stable.
+
+**Dying ReLU problem**: if a neuron's pre-activation is always negative (e.g. due to a large negative bias), the gradient is permanently zero — the neuron never updates. Mitigations:
+
+- **Leaky ReLU**: f(x) = x if x > 0 else αx (typically α = 0.01). Keeps a small gradient for negative inputs.
+- **ELU** (Exponential Linear Unit): f(x) = x if x > 0 else α(eˣ−1). Smooth at zero, negative saturation gives robustness to noise.
+
+## GELU — The Transformer Standard
+
+**GELU** (Gaussian Error Linear Unit): f(x) = x · Φ(x), where Φ is the standard normal CDF.
+
+Intuitively, GELU stochastically gates inputs — small values are more likely to be zeroed. The result is a smooth, differentiable curve that resembles ReLU but has non-zero gradients for small negatives. This smoothness aids optimisation in deep models. GELU is used in BERT, GPT, and most modern transformers.
+
+## Softmax — For Probability Outputs
+
+Softmax converts a vector of raw logits into a probability distribution:
+
+softmax(z)ᵢ = exp(zᵢ) / Σⱼ exp(zⱼ)
+
+It is used in the output layer for multi-class classification. All outputs are positive and sum to 1. Numerically, subtract the max logit before exponentiating to avoid overflow.
+
+<NeuronDiagram animate />
+
+## Code: Activation Values at a Glance
+
+```python runnable
+import numpy as np
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+def tanh(x):
+    return np.tanh(x)
+
+def relu(x):
+    return np.maximum(0, x)
+
+def leaky_relu(x, alpha=0.01):
+    return np.where(x > 0, x, alpha * x)
+
+def gelu(x):
+    # Exact GELU via error function approximation
+    return 0.5 * x * (1 + np.tanh(np.sqrt(2 / np.pi) * (x + 0.044715 * x**3)))
+
+def softmax(x):
+    e = np.exp(x - np.max(x))   # numerically stable
+    return e / e.sum()
+
+xs = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+
+print(f"{'x':>6}  {'sigmoid':>8}  {'tanh':>8}  {'relu':>6}  {'leaky':>8}  {'gelu':>8}")
+print("-" * 60)
+for x in xs:
+    print(f"{x:>6.1f}  {sigmoid(x):>8.4f}  {tanh(x):>8.4f}  "
+          f"{relu(x):>6.4f}  {leaky_relu(x):>8.4f}  {gelu(x):>8.4f}")
+
+# Gradient of sigmoid — shows vanishing gradient
+print("\\nSigmoid gradients (peak = 0.25 at x=0):")
+grads = sigmoid(xs) * (1 - sigmoid(xs))
+for x, g in zip(xs, grads):
+    bar = "█" * int(g * 40)
+    print(f"  x={x:+.0f}  grad={g:.4f}  {bar}")
+
+# Softmax on logits
+logits = np.array([2.0, 1.0, 0.5, -1.0])
+probs  = softmax(logits)
+print(f"\\nSoftmax([2.0, 1.0, 0.5, -1.0]) = {probs.round(4)}  sum={probs.sum():.4f}")
+```
+
+```quiz
+[{
+    question: "What is the core reason sigmoid causes vanishing gradients in deep networks?",
+    options: [
+      "Its output is always positive",
+      "Its gradient saturates to near zero for large |x| and never exceeds 0.25",
+      "It is not differentiable at x = 0",
+      "It maps outputs to a range larger than (0, 1)"
+    ],
+    correct: 1,
+    explanation: "The sigmoid gradient σ′(x) = σ(x)(1−σ(x)) peaks at 0.25 when x=0 and approaches 0 for large |x|. Multiplied across many layers via the chain rule, this sends gradients to zero exponentially — making early layers learn extremely slowly."
+  },
+  {
+    question: "What causes the 'dying ReLU' problem?",
+    options: [
+      "ReLU is not differentiable, so gradients cannot flow",
+      "ReLU saturates for large positive values",
+      "Neurons receiving always-negative pre-activations get zero gradient and never recover",
+      "The ReLU output is not zero-centred"
+    ],
+    correct: 2,
+    explanation: "For x ≤ 0, ReLU outputs 0 and its gradient is 0. If a neuron's input is permanently negative (e.g. a large negative bias from a bad update), its gradient is always 0 and weights never update — the neuron is permanently 'dead'."
+  },
+  {
+    question: "Why is GELU preferred over ReLU in transformer architectures?",
+    options: [
+      "GELU is faster to compute",
+      "GELU has a smooth, differentiable curve with non-zero gradients for small negatives",
+      "GELU prevents the vanishing gradient problem better than any other activation",
+      "GELU outputs a probability distribution"
+    ],
+    correct: 1,
+    explanation: "GELU is smooth everywhere and provides small non-zero gradients for mildly negative inputs, which helps gradient flow in very deep models. Its stochastic interpretation (gating inputs probabilistically) also aligns well with the attention mechanisms in transformers."
+  }]
+```

@@ -58,19 +58,19 @@ body {
   font-size: 1.5rem;
   font-weight: 700;
   margin: 2rem 0 1rem;
-  color: #f1f5f9;
+  color: var(--foreground);
 }
 
 .lesson-prose h3 {
   font-size: 1.25rem;
   font-weight: 600;
   margin: 1.5rem 0 0.75rem;
-  color: #cbd5e1;
+  color: var(--foreground);
 }
 
 .lesson-prose p {
   margin-bottom: 1rem;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .lesson-prose code {
@@ -80,7 +80,7 @@ body {
   padding: 2px 6px;
   font-size: 0.875rem;
   font-family: monospace;
-  color: #a5b4fc;
+  color: var(--track-math);
 }
 
 .lesson-prose pre {
@@ -96,7 +96,7 @@ body {
 .lesson-prose ol {
   padding-left: 1.5rem;
   margin-bottom: 1rem;
-  color: #94a3b8;
+  color: var(--muted);
 }
 
 .lesson-prose li {
@@ -105,5 +105,5 @@ body {
 
 /* KaTeX */
 .katex {
-  color: #c7d2fe;
+  color: var(--track-math);
 }

@@ -11,7 +11,7 @@ export function DiffusionProcess({ steps = 5, animate = true }: DiffusionProcess
   const noiseColors = ["#1e1e2e", "#2d2d4e", "#3d3d6e", "#4d4d8e", "#6366f1"];
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "#080810" }}>
+    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
       <svg width="100%" viewBox={`0 0 ${steps * 80 + 40} 120`} style={{ display: "block" }}>
         <text x={(steps * 80 + 40) / 2} y={16} textAnchor="middle" fill="#64748b" fontSize={10}>
           Denoising Process (right to left)

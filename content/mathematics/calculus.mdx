@@ -1,0 +1,94 @@
+---
+title: "Calculus"
+track: "mathematics"
+estimatedMinutes: 11
+description: "Derivatives, gradients, and the engine behind learning"
+---
+
+## Why Calculus?
+
+Training a neural network is an optimization problem: find weights that minimize a loss function. Calculus tells us *which direction to move* those weights. Without derivatives, there is no gradient descent, no backpropagation, no learning.
+
+## Derivatives
+
+The derivative `f'(x)` measures the instantaneous rate of change of `f` at `x`. Geometrically, it's the slope of the tangent line.
+
+Key rules:
+- **Power rule**: `d/dx [xⁿ] = nxⁿ⁻¹`
+- **Chain rule**: `d/dx [f(g(x))] = f'(g(x)) · g'(x)` — this is backpropagation
+- **Product rule**: `d/dx [f·g] = f'g + fg'`
+
+## The Chain Rule is Backpropagation
+
+The chain rule lets us differentiate compositions of functions. A neural network is exactly that — a composition of linear transformations and nonlinearities. When we compute `dL/dW` for a weight matrix W deep in the network, we're applying the chain rule repeatedly through every layer.
+
+## Gradients
+
+The **gradient** `∇f(x)` generalizes the derivative to multiple dimensions. It's a vector of partial derivatives: `∇f = [∂f/∂x₁, ∂f/∂x₂, ..., ∂f/∂xₙ]`.
+
+The gradient always points in the direction of **steepest increase**. So to minimize `f`, we move in the *negative* gradient direction — gradient descent.
+
+## Jacobians and Hessians
+
+- **Jacobian**: the matrix of all first-order partial derivatives of a vector-valued function. Maps input perturbations to output perturbations.
+- **Hessian**: matrix of second-order partial derivatives. Captures curvature. Used in second-order optimizers like Newton's method.
+
+## Taylor Series
+
+Any smooth function can be approximated near a point `a` as:
+`f(x) ≈ f(a) + f'(a)(x-a) + ½f''(a)(x-a)² + ...`
+
+This first-order approximation underpins gradient descent. The second-order term explains why regions of high curvature need smaller learning rates.
+
+<NeuronDiagram animate />
+
+```python runnable
+import numpy as np
+
+# Numerical derivative using finite differences
+def numerical_gradient(f, x, h=1e-5):
+    return (f(x + h) - f(x - h)) / (2 * h)
+
+# Example: f(x) = x^3 - 2x + 1
+def f(x):
+    return x**3 - 2*x + 1
+
+# Analytical derivative: f'(x) = 3x^2 - 2
+def f_prime(x):
+    return 3*x**2 - 2
+
+x = 2.0
+print(f"f'({x}) analytical: {f_prime(x)}")
+print(f"f'({x}) numerical:  {numerical_gradient(f, x):.6f}")
+
+# Gradient of a 2D function: g(x,y) = x^2 + 3xy + y^2
+def grad_g(x, y):
+    dg_dx = 2*x + 3*y   # partial w.r.t. x
+    dg_dy = 3*x + 2*y   # partial w.r.t. y
+    return np.array([dg_dx, dg_dy])
+
+x, y = 1.0, 2.0
+print(f"\\nGradient of g at ({x},{y}):", grad_g(x, y))
+print("Gradient points toward steepest ascent")
+```
+
+```quiz
+[{
+    question: "What does the chain rule compute in a neural network?",
+    options: ["Forward pass activations", "Gradients through composed functions", "Weight initialization", "Loss value"],
+    correct: 1,
+    explanation: "Backpropagation IS the chain rule — it propagates gradients backward through each layer's composition of functions"
+  },
+  {
+    question: "In gradient descent, we update weights as W ← W - η∇L. Why the minus sign?",
+    options: ["Convention only", "The gradient points toward steepest decrease", "The gradient points toward steepest increase so we negate it", "To keep weights positive"],
+    correct: 2,
+    explanation: "The gradient ∇L points in the direction of greatest increase in loss. We subtract it to move toward lower loss"
+  },
+  {
+    question: "What is the derivative of f(x) = sigmoid(x) with respect to x?",
+    options: ["sigmoid(x)", "1 - sigmoid(x)", "sigmoid(x)(1 - sigmoid(x))", "sigmoid(x)²"],
+    correct: 2,
+    explanation: "σ'(x) = σ(x)(1 - σ(x)) — this is derived using the quotient rule and is why sigmoid gradients vanish near 0 or 1"
+  }]
+```

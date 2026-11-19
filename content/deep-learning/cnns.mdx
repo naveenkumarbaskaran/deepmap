@@ -1,0 +1,128 @@
+---
+title: "Convolutional Neural Networks"
+track: "deep-learning"
+estimatedMinutes: 14
+description: "Understand how convolutions extract spatial features, why CNNs are parameter-efficient, and how pooling and stride shape classic architectures like LeNet, AlexNet, and VGG."
+---
+
+## What Makes CNNs Different
+
+A fully connected layer connecting a 224×224 RGB image to 1,000 hidden units requires over 150 million parameters — just for the first layer. Convolutional layers solve this with two ideas: **local connectivity** (each neuron sees only a small spatial patch) and **weight sharing** (the same filter slides across the entire image). The result is a dramatic reduction in parameters with no loss of expressive power for spatial data.
+
+## The Convolution Operation
+
+A filter (kernel) is a small matrix of learnable weights — commonly 3×3 or 5×5. It slides across the input with a step size called **stride**, computing a dot product at each position. The output is a **feature map**: a 2D activation grid showing where the filter's pattern was detected.
+
+A 3×3 edge-detection kernel looks like:
+```
+-1  -1  -1
+ 0   0   0
+ 1   1   1
+```
+This responds strongly to horizontal edges. A network learns its own filters automatically via backpropagation.
+
+**Padding** (usually zero-padding) adds a border around the input so the output spatial size can match the input. Without padding, each convolution shrinks the feature map.
+
+## Pooling and Downsampling
+
+**Max pooling** takes the maximum value in each patch (e.g., 2×2 region, stride 2), halving spatial dimensions. This achieves **translation invariance** — small shifts in the input produce the same output — and reduces computation in deeper layers. Average pooling computes the mean instead; global average pooling collapses each feature map to a single scalar.
+
+## Receptive Field
+
+The **receptive field** of a neuron is the region of the input image it "sees". Two stacked 3×3 conv layers give each output neuron a 5×5 receptive field, while using fewer parameters than one 5×5 layer. Deeper networks build large effective receptive fields cheaply.
+
+## Classic Architectures
+
+| Model | Key idea |
+|-------|----------|
+| **LeNet-5** (1998) | First practical CNN; conv→pool→conv→pool→fc |
+| **AlexNet** (2012) | Deeper, ReLU activations, dropout, GPU training |
+| **VGG** (2014) | Very deep (16–19 layers), all 3×3 convs, clean pattern |
+
+The standard CNN pipeline: `conv → ReLU → pool` repeated N times, then flatten and one or more fully connected layers for classification.
+
+## Diagram
+
+<ConvolutionViz animate />
+
+## Convolution From Scratch
+
+```python runnable
+import numpy as np
+
+def conv2d(image, kernel, stride=1):
+    kh, kw = kernel.shape
+    ih, iw = image.shape
+    oh = (ih - kh) // stride + 1
+    ow = (iw - kw) // stride + 1
+    output = np.zeros((oh, ow))
+    for i in range(oh):
+        for j in range(ow):
+            patch = image[i*stride:i*stride+kh, j*stride:j*stride+kw]
+            output[i, j] = np.sum(patch * kernel)
+    return output
+
+# 6x6 input: a simple pattern with a horizontal edge
+image = np.array([
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+    [1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1],
+], dtype=float)
+
+# Sobel-style horizontal edge detector
+edge_kernel = np.array([
+    [-1, -1, -1],
+    [ 0,  0,  0],
+    [ 1,  1,  1],
+], dtype=float)
+
+feature_map = conv2d(image, edge_kernel)
+print("Input (6x6):")
+print(image)
+print("\\nEdge-detection kernel (3x3):")
+print(edge_kernel)
+print("\\nFeature map (4x4):")
+print(feature_map)
+print("\\nStrong response (3.0) at row 1 — the horizontal edge location.")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "Why do CNNs use weight sharing across spatial positions?",
+    options: [
+      "To increase the number of learnable parameters",
+      "So the same feature detector applies everywhere in the image, reducing parameters",
+      "To ensure each neuron sees the full input",
+      "To replace the need for activation functions"
+    ],
+    correct: 1,
+    explanation: "Weight sharing means one filter is reused at every spatial position. This encodes the assumption that a feature useful in one part of an image is useful elsewhere — and reduces parameters drastically compared to fully connected layers."
+  },
+  {
+    question: "What does max pooling with a 2×2 window and stride 2 do to a 16×16 feature map?",
+    options: [
+      "Produces a 14×14 output",
+      "Produces an 8×8 output",
+      "Doubles the spatial size",
+      "Has no effect on spatial dimensions"
+    ],
+    correct: 1,
+    explanation: "A 2×2 pooling window with stride 2 halves each spatial dimension: 16/2 = 8. The output is 8×8."
+  },
+  {
+    question: "Two stacked 3×3 conv layers (no pooling) give each output neuron what receptive field on the input?",
+    options: [
+      "3×3",
+      "6×6",
+      "5×5",
+      "9×9"
+    ],
+    correct: 2,
+    explanation: "Each 3×3 layer adds 1 pixel of context on each side. After two layers: 3 + 2 = 5. The receptive field is 5×5, achieved with fewer parameters than a single 5×5 conv."
+  }]
+```

@@ -1,0 +1,149 @@
+---
+title: "Object Detection"
+track: "deep-learning"
+estimatedMinutes: 13
+description: "Move beyond image classification to localizing multiple objects with bounding boxes. Learn IoU, anchor boxes, the R-CNN family, single-shot YOLO detection, NMS, and the mAP evaluation metric."
+---
+
+## Classification, Detection, Segmentation
+
+| Task | Output |
+|------|--------|
+| **Classification** | One label per image |
+| **Detection** | Bounding boxes + labels for each object |
+| **Segmentation** | Pixel-level mask per object |
+
+Detection adds spatial localization: not just "there is a cat" but "the cat is at coordinates (x, y, w, h)".
+
+## Bounding Boxes and IoU
+
+A bounding box is typically represented as `(x_center, y_center, width, height)` or `(x1, y1, x2, y2)`. To measure how well a predicted box matches a ground-truth box, we use **Intersection over Union (IoU)**:
+
+```
+IoU = Area of Intersection / Area of Union
+```
+
+IoU = 1 means perfect overlap; IoU = 0 means no overlap. A threshold (commonly 0.5) determines whether a prediction counts as a true positive.
+
+## Anchor Boxes
+
+Modern detectors pre-define a set of **anchor boxes** — boxes of varying aspect ratios and scales centered at each grid cell. The network predicts offsets from anchors rather than absolute box coordinates. Anchors act as reference shapes, making regression easier and enabling detection of objects at multiple scales.
+
+## R-CNN Family
+
+**R-CNN (2014)**: Extract ~2,000 region proposals (selective search), warp each to fixed size, run CNN on each separately. Accurate but extremely slow (~47s/image).
+
+**Fast R-CNN (2015)**: Run the CNN once on the full image to get a feature map, then extract region features via RoI pooling. Much faster (~0.2s/image).
+
+**Faster R-CNN (2015)**: Replace selective search with a **Region Proposal Network (RPN)** — a small CNN that proposes regions from the same feature map. End-to-end training. ~0.2s/image with higher quality proposals.
+
+## YOLO: Single-Shot Detection
+
+**YOLO (You Only Look Once)** divides the image into a grid. Each cell predicts B bounding boxes and class probabilities directly — in a single forward pass. This makes YOLO extremely fast (real-time on video) at the cost of some accuracy on small or overlapping objects.
+
+## Non-Maximum Suppression (NMS)
+
+Detectors often predict multiple overlapping boxes for the same object. **NMS** removes duplicates:
+1. Sort boxes by confidence score (highest first)
+2. Keep the highest-confidence box
+3. Remove all boxes with IoU > threshold against the kept box
+4. Repeat for remaining boxes
+
+## Evaluation: mAP
+
+**mean Average Precision (mAP)** averages the AP (area under precision-recall curve) across all object classes and IoU thresholds. Higher is better. COCO mAP at IoU 0.5:0.95 is the standard benchmark.
+
+## Diagram
+
+<ConvolutionViz animate />
+
+## IoU and NMS From Scratch
+
+```python runnable
+import numpy as np
+
+def compute_iou(box1, box2):
+    """Boxes in (x1, y1, x2, y2) format."""
+    ix1 = max(box1[0], box2[0])
+    iy1 = max(box1[1], box2[1])
+    ix2 = min(box1[2], box2[2])
+    iy2 = min(box1[3], box2[3])
+    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    area1 = (box1[2]-box1[0]) * (box1[3]-box1[1])
+    area2 = (box2[2]-box2[0]) * (box2[3]-box2[1])
+    union = area1 + area2 - inter
+    return inter / union if union > 0 else 0.0
+
+def nms(boxes, scores, iou_threshold=0.5):
+    """Non-Maximum Suppression."""
+    order = np.argsort(scores)[::-1]   # sort by score descending
+    keep = []
+    while len(order) > 0:
+        i = order[0]
+        keep.append(i)
+        ious = np.array([compute_iou(boxes[i], boxes[j]) for j in order[1:]])
+        order = order[1:][ious <= iou_threshold]
+    return keep
+
+# 5 predicted boxes for the same object
+boxes = np.array([
+    [10, 10, 50, 50],   # near-perfect
+    [12, 11, 52, 51],   # slight shift — duplicate
+    [13, 12, 53, 52],   # another duplicate
+    [60, 60, 90, 90],   # different object
+    [61, 61, 91, 91],   # duplicate of different object
+], dtype=float)
+
+scores = np.array([0.95, 0.80, 0.75, 0.88, 0.70])
+
+# IoU between first two boxes
+iou_01 = compute_iou(boxes[0], boxes[1])
+print(f"IoU between box 0 and box 1 (duplicates): {iou_01:.4f}")
+
+iou_03 = compute_iou(boxes[0], boxes[3])
+print(f"IoU between box 0 and box 3 (different objects): {iou_03:.4f}")
+
+print(f"\\nBefore NMS: {len(boxes)} boxes")
+kept = nms(boxes, scores, iou_threshold=0.5)
+print(f"After NMS (threshold=0.5): {len(kept)} boxes kept")
+print(f"Kept indices: {kept}")
+print(f"Kept scores: {scores[kept]}")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What does IoU = 0.5 mean?",
+    options: [
+      "The predicted box covers 50% of the image",
+      "The intersection area equals half of the union area",
+      "The predicted box has 50% confidence",
+      "The two boxes share exactly one edge"
+    ],
+    correct: 1,
+    explanation: "IoU = Intersection / Union. IoU = 0.5 means the overlapping area is exactly half the total combined area of both boxes. It is the standard threshold for counting a detection as a true positive."
+  },
+  {
+    question: "What was the main innovation of Faster R-CNN over Fast R-CNN?",
+    options: [
+      "Using a fully convolutional backbone",
+      "Replacing selective search with a learned Region Proposal Network (RPN)",
+      "Applying NMS at training time",
+      "Using anchor boxes with a fixed 1:1 aspect ratio"
+    ],
+    correct: 1,
+    explanation: "Fast R-CNN still used selective search (a slow, non-learned algorithm) for region proposals. Faster R-CNN replaced it with an RPN that shares the backbone feature map, making the whole pipeline end-to-end trainable and much faster."
+  },
+  {
+    question: "Why does YOLO sacrifice some accuracy compared to Faster R-CNN?",
+    options: [
+      "It uses a weaker backbone network",
+      "It uses only one anchor box per cell",
+      "Its single-pass, grid-based design struggles with small and highly overlapping objects",
+      "It does not use NMS"
+    ],
+    correct: 2,
+    explanation: "YOLO's grid imposes spatial constraints — each cell predicts a fixed number of boxes, so densely packed or small objects that share grid cells can be missed or poorly localized. Two-stage detectors like Faster R-CNN handle these cases better."
+  }]
+```

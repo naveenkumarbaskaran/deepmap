@@ -26,11 +26,11 @@ export function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all"
       style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        color: "var(--muted)",
+        display: "flex", alignItems: "center", gap: "6px",
+        padding: "6px 12px", borderRadius: "8px", fontSize: "0.875rem",
+        background: "var(--surface)", border: "1px solid var(--border)",
+        color: "var(--muted)", cursor: "pointer", transition: "all 0.2s",
       }}
       title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
     >

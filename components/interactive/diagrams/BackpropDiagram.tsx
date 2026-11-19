@@ -33,7 +33,7 @@ export function BackpropDiagram({ showGradients = true, animate = true }: Backpr
   const getPos = (id: string) => nodes.find((n) => n.id === id)!;
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "#080810" }}>
+    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
       <svg width="100%" viewBox="0 0 480 200" style={{ display: "block" }}>
         {/* Forward pass edges */}
         {forwardEdges.map((e, i) => {

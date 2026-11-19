@@ -1,0 +1,118 @@
+---
+title: "RNNs & LSTMs"
+track: "deep-learning"
+estimatedMinutes: 14
+description: "Learn how recurrent networks process sequences, why vanilla RNNs fail on long dependencies, and how LSTM gates solve the vanishing gradient problem."
+---
+
+## Processing Sequences
+
+Feedforward networks assume inputs are independent. Language, audio, and time-series data are not — the word "bank" means something different after "river" vs. "deposit". Recurrent Neural Networks (RNNs) handle this by maintaining a **hidden state** `h_t` that acts as a memory, updated at each timestep using both the current input `x_t` and the previous hidden state `h_{t-1}`.
+
+The vanilla RNN update is simply:
+
+```
+h_t = tanh(W_h · h_{t-1} + W_x · x_t + b)
+```
+
+The same weight matrices `W_h` and `W_x` are reused at every timestep — analogous to weight sharing in CNNs.
+
+## The Vanishing Gradient Problem
+
+Training RNNs via backpropagation through time (BPTT) requires multiplying gradients across every timestep. If the dominant eigenvalue of `W_h` is less than 1, gradients shrink exponentially with sequence length. After 20–30 timesteps, the gradient signal from early inputs is essentially zero — the network cannot learn long-range dependencies like matching a subject to its verb 50 tokens later.
+
+## LSTM: Long Short-Term Memory
+
+LSTMs (Hochreiter & Schmidhuber, 1997) add a separate **cell state** `C_t` — a highway for gradient flow — and three **gates** that control information:
+
+| Gate | Role |
+|------|------|
+| **Forget gate** `f_t` | What fraction of the old cell state to erase |
+| **Input gate** `i_t` | What new information to write to the cell state |
+| **Output gate** `o_t` | What part of the cell state to expose as hidden state |
+
+Each gate is a sigmoid in [0, 1], acting as a soft on/off switch. Because the cell state is updated additively (`C_t = f_t * C_{t-1} + i_t * C̃_t`), gradients can flow backwards without shrinking — solving vanishing gradients for practical sequence lengths.
+
+## GRU: A Simpler Alternative
+
+The Gated Recurrent Unit (GRU, 2014) merges the cell and hidden state and uses only two gates (reset and update). It is computationally cheaper than an LSTM and performs comparably on many tasks.
+
+## Bidirectional RNNs
+
+A standard RNN only uses past context. A **bidirectional RNN** runs one RNN forward and another backward, then concatenates both hidden states. This gives each position access to full left and right context — essential for tasks like named entity recognition.
+
+## Diagram
+
+<NeuronDiagram animate />
+
+## Vanilla RNN Forward Pass
+
+```python runnable
+import numpy as np
+
+np.random.seed(42)
+
+# Dimensions
+input_size = 4
+hidden_size = 3
+seq_len = 5
+
+# Random weights (small init)
+Wx = np.random.randn(hidden_size, input_size) * 0.1
+Wh = np.random.randn(hidden_size, hidden_size) * 0.1
+b  = np.zeros(hidden_size)
+
+# Random input sequence: 5 timesteps, each a 4-dim vector
+X = np.random.randn(seq_len, input_size)
+
+# Forward pass
+h = np.zeros(hidden_size)   # initial hidden state
+print(f"Initial hidden state: {np.round(h, 4)}")
+print()
+
+for t in range(seq_len):
+    h = np.tanh(Wh @ h + Wx @ X[t] + b)
+    print(f"t={t+1}  input={np.round(X[t], 3)}  ->  h={np.round(h, 4)}")
+
+print()
+print("Final hidden state encodes the entire sequence:")
+print(np.round(h, 4))
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What is the core cause of the vanishing gradient problem in vanilla RNNs?",
+    options: [
+      "Using tanh instead of ReLU activations",
+      "Repeated multiplication of gradients through the same weight matrix over many timesteps",
+      "Too many parameters in the hidden layer",
+      "Batch normalization being absent"
+    ],
+    correct: 1,
+    explanation: "BPTT multiplies the gradient by W_h at every timestep. If its eigenvalues are < 1, the signal decays exponentially. After many steps, early-timestep gradients vanish and the network stops learning long-range patterns."
+  },
+  {
+    question: "In an LSTM, what does the forget gate output of 0 mean?",
+    options: [
+      "The cell state is fully preserved",
+      "The cell state is completely erased",
+      "New information is written at full strength",
+      "The hidden state is passed through unchanged"
+    ],
+    correct: 1,
+    explanation: "The forget gate multiplies the old cell state element-wise. A value of 0 means 'forget everything'; a value of 1 means 'keep everything'. This selective erasure is what allows LSTMs to drop irrelevant past context."
+  },
+  {
+    question: "What advantage does a bidirectional RNN have over a unidirectional one?",
+    options: [
+      "It trains twice as fast",
+      "It prevents overfitting by halving the number of parameters",
+      "Each position can use both past and future context from the sequence",
+      "It eliminates the need for an embedding layer"
+    ],
+    correct: 2,
+    explanation: "A bidirectional RNN runs forward and backward passes, concatenating both hidden states. This gives each token access to the full sequence context in both directions — critical for tasks like NER or masked language modeling."
+  }]
+```

@@ -45,7 +45,7 @@ export function ConvolutionViz({ inputSize = 5, kernelSize = 3, animate = true }
   const totalWidth = inputWidth + gap + kernelSize * cellSize + gap + outputWidth + 40;
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "#080810" }}>
+    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
       <svg width="100%" viewBox={`0 0 ${totalWidth} ${inputSize * cellSize + 50}`} style={{ display: "block" }}>
         {/* Input grid */}
         <text x={inputWidth / 2} y={18} textAnchor="middle" fill="#64748b" fontSize={10}>Input ({inputSize}×{inputSize})</text>

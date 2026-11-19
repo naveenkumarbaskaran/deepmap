@@ -1,0 +1,130 @@
+---
+title: "Seq2Seq"
+track: "deep-learning"
+estimatedMinutes: 12
+description: "Understand the encoder-decoder architecture for sequence-to-sequence tasks, the context vector bottleneck, beam search, teacher forcing, and why the fixed-length bottleneck motivates attention."
+---
+
+## The Encoder-Decoder Architecture
+
+Many real-world tasks map one sequence to another of a different length: translating English to French, summarizing a paragraph, or generating code from a natural-language description. A single RNN cannot do this cleanly because the input and output sequences have different lengths.
+
+**Seq2Seq** (Sutskever et al., 2014) uses two separate RNNs:
+
+- **Encoder**: reads the input sequence token by token and produces a single fixed-length vector — the **context vector** (usually the final hidden state).
+- **Decoder**: initializes its hidden state from the context vector and generates the output sequence one token at a time, feeding its previous output as the next input.
+
+## Greedy vs. Beam Search Decoding
+
+At each decoder step, the network outputs a probability distribution over the vocabulary. **Greedy decoding** always picks the highest-probability token. This is fast but suboptimal — a low-probability first token can lead to a higher-probability full sequence.
+
+**Beam search** keeps the top-k partial sequences (the "beam") at each step, expanding all of them and pruning back to k. With k=5 it typically produces significantly better translations than greedy decoding, at the cost of k× more computation.
+
+## Teacher Forcing
+
+During training, feeding the model's own (possibly wrong) predictions as inputs to the next decoder step causes error accumulation — training becomes unstable. **Teacher forcing** solves this by feeding the ground-truth previous token during training, regardless of what the decoder actually predicted. At inference time the model uses its own predictions. This mismatch is called **exposure bias** and is an active research area.
+
+## The Fixed-Length Bottleneck
+
+The context vector must compress the entire input sequence — no matter its length — into a fixed-size vector. For short sentences this works well. For long documents (hundreds of tokens) critical information at the beginning of the sequence gets "forgotten" before it reaches the context vector. Empirically, translation quality degrades sharply for input sentences longer than ~30 words.
+
+This bottleneck directly motivates **attention mechanisms**: instead of compressing everything into one vector, let the decoder look back at all encoder hidden states and selectively focus on the relevant parts at each decoding step.
+
+## Applications
+
+Seq2Seq is the foundation for machine translation (early Google Translate), abstractive summarization, speech recognition, code generation, and question answering — any task with variable-length input and output.
+
+## Diagram
+
+<NeuronDiagram animate />
+
+## Encoder-Decoder Simulation
+
+```python runnable
+import numpy as np
+
+np.random.seed(7)
+
+# Tiny seq2seq: encoder reads 4 tokens, decoder generates 3 tokens
+vocab_size = 6
+embed_dim = 4
+hidden_size = 5
+
+# Embedding table (lookup)
+E = np.random.randn(vocab_size, embed_dim) * 0.1
+
+# Encoder weights
+We_x = np.random.randn(hidden_size, embed_dim) * 0.1
+We_h = np.random.randn(hidden_size, hidden_size) * 0.1
+
+# Decoder weights + output projection
+Wd_x = np.random.randn(hidden_size, embed_dim) * 0.1
+Wd_h = np.random.randn(hidden_size, hidden_size) * 0.1
+W_out = np.random.randn(vocab_size, hidden_size) * 0.1
+
+# Input sequence: token ids [2, 0, 3, 1]
+input_tokens = [2, 0, 3, 1]
+
+# --- ENCODER ---
+h = np.zeros(hidden_size)
+print("ENCODER")
+for t, tok in enumerate(input_tokens):
+    x = E[tok]
+    h = np.tanh(We_x @ x + We_h @ h)
+    print(f"  step {t+1}: token={tok}  h_norm={np.linalg.norm(h):.4f}")
+
+context = h.copy()
+print(f"\\nContext vector (shape {context.shape}):")
+print(np.round(context, 3))
+
+# --- DECODER ---
+print("\\nDECODER")
+SOS_token = 5   # start-of-sequence
+h = context.copy()
+tok = SOS_token
+for t in range(3):
+    x = E[tok]
+    h = np.tanh(Wd_x @ x + Wd_h @ h)
+    logits = W_out @ h
+    probs = np.exp(logits) / np.sum(np.exp(logits))   # softmax
+    tok = int(np.argmax(probs))   # greedy
+    print(f"  step {t+1}: predicted token={tok}  prob={probs[tok]:.4f}")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "What is the context vector in a seq2seq model?",
+    options: [
+      "The attention weight matrix",
+      "The final hidden state of the encoder, used to initialize the decoder",
+      "A learned embedding for each output token",
+      "The concatenation of all decoder hidden states"
+    ],
+    correct: 1,
+    explanation: "The context vector is the encoder's final hidden state. It is a fixed-length summary of the entire input sequence and is used to seed the decoder's initial hidden state."
+  },
+  {
+    question: "Why does beam search outperform greedy decoding?",
+    options: [
+      "It uses a larger vocabulary",
+      "It runs the encoder multiple times",
+      "It tracks multiple candidate sequences simultaneously, avoiding locally optimal but globally suboptimal choices",
+      "It applies attention at each decoding step"
+    ],
+    correct: 2,
+    explanation: "Greedy decoding locks in each token immediately. Beam search keeps k hypotheses alive, allowing a lower-probability early token to lead to a better overall sequence — at the cost of k× computation."
+  },
+  {
+    question: "What problem does teacher forcing solve, and what new problem does it introduce?",
+    options: [
+      "Solves vanishing gradients; introduces exploding gradients",
+      "Solves unstable training from error accumulation; introduces exposure bias (train/test mismatch)",
+      "Solves the fixed-length bottleneck; introduces slow convergence",
+      "Solves beam search inefficiency; introduces increased memory usage"
+    ],
+    correct: 1,
+    explanation: "Teacher forcing feeds ground-truth tokens during training, stabilizing learning. But at inference the model uses its own predictions, creating a distribution mismatch known as exposure bias."
+  }]
+```

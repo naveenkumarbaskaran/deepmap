@@ -1,0 +1,134 @@
+---
+title: "Diffusion Models"
+track: "llms-and-gen-ai"
+estimatedMinutes: 14
+description: "Understand forward diffusion, the reverse denoising process, DDPM/DDIM, noise schedules, and latent diffusion — and why diffusion models have largely displaced GANs for image generation."
+---
+
+## From Noise to Image
+
+Diffusion models learn to generate data by learning to *undo* a gradual noising process. The key insight: if you can learn to reverse noise addition one small step at a time, you can generate complex data from pure noise.
+
+This two-phase framework — a fixed **forward process** and a learned **reverse process** — underpins DDPM, DDIM, Stable Diffusion, and DALL-E 3.
+
+## Forward Diffusion: Destroying Structure
+
+The forward process incrementally adds Gaussian noise over T timesteps (typically 1000). At each step t, a small amount of noise is mixed into the signal:
+
+```
+x_t = √(ᾱ_t) · x_0 + √(1 − ᾱ_t) · ε,   ε ~ N(0, I)
+```
+
+Where `ᾱ_t` is the cumulative product of noise coefficients `(1 − β_t)`. By step T, `x_T` is nearly indistinguishable from pure Gaussian noise regardless of the original input.
+
+**Noise schedules** control how fast structure is destroyed:
+- **Linear schedule** (original DDPM): β increases linearly. Destroys structure too aggressively early on.
+- **Cosine schedule** (improved DDPM): `ᾱ_t = cos²((t/T + s)/(1+s) · π/2)`. Slower degradation near t=0, better sample quality.
+
+<DiffusionProcess animate />
+
+## Reverse Process: Learning to Denoise
+
+A neural network (typically a **U-Net**) is trained to predict the noise `ε` added at each timestep, conditioned on the current noisy input `x_t` and timestep embedding `t`. Training minimizes:
+
+```
+L = E[‖ε − ε_θ(x_t, t)‖²]
+```
+
+At inference, the model iteratively denoises: starting from `x_T ~ N(0,I)`, it predicts and subtracts noise at each step, walking toward a clean sample.
+
+**U-Net denoiser**: encoder-decoder with skip connections. Timestep t is embedded via sinusoidal encodings and injected at each layer. For text-conditioned generation, cross-attention layers fuse text embeddings throughout.
+
+## DDPM vs DDIM
+
+**DDPM** (Ho et al., 2020) uses the full 1000-step Markov chain — slow at inference (~30s per image on a GPU).
+
+**DDIM** (Song et al., 2020) reformulates the reverse process as a non-Markovian deterministic ODE. This allows skipping steps: sampling with just 50 steps gives comparable quality to DDPM's 1000, achieving ~20× speedup. DDIM also enables **deterministic sampling** — the same latent always produces the same image.
+
+## Classifier-Free Guidance
+
+To strengthen conditioning (e.g., text prompts), models are trained both with and without the conditioning signal. At inference, predictions are extrapolated away from the unconditional baseline:
+
+```
+ε_guided = ε_uncond + w · (ε_cond − ε_uncond)
+```
+
+Higher guidance scale `w` increases prompt fidelity at the cost of diversity and can cause saturation artifacts.
+
+## Latent Diffusion (Stable Diffusion)
+
+Running diffusion in pixel space is expensive. **Latent diffusion** (Rombach et al., 2022) first trains a VAE to compress images into a compact latent space (~8× spatial reduction), then runs the diffusion process entirely in that latent space. This reduces compute by ~64× while preserving perceptual quality.
+
+## Why Diffusion Beats GANs for Images
+
+GANs require adversarial training — a notoriously unstable two-player game prone to mode collapse. Diffusion models train with a simple MSE objective, scale predictably, produce diverse outputs, and support exact likelihood computation. The tradeoff: slower sampling (now largely solved by DDIM, consistency models, and flow matching variants).
+
+## Forward Noise Schedule — Code
+
+```python runnable
+import numpy as np
+
+T = 1000
+s = 0.008  # small offset to avoid singularity near t=0
+
+# Cosine noise schedule: cumulative signal retention alpha_bar_t
+t_values = np.arange(T + 1)
+alpha_bar = np.cos(((t_values / T) + s) / (1 + s) * np.pi / 2) ** 2
+alpha_bar = alpha_bar / alpha_bar[0]  # normalize so alpha_bar[0] = 1.0
+
+# Show how the signal fraction drops over timesteps
+checkpoints = [0, 100, 250, 500, 750, 999]
+print("Timestep | Signal retained | Noise fraction")
+print("-" * 45)
+for t in checkpoints:
+    signal = np.sqrt(alpha_bar[t])
+    noise  = np.sqrt(1 - alpha_bar[t])
+    print(f"  t={t:4d}  |     {signal:.4f}      |    {noise:.4f}")
+
+# Simulate forward diffusion on a toy 1-D signal
+np.random.seed(42)
+x0 = np.array([1.0, -0.5, 0.8, 0.3, -1.2])  # clean signal
+print("\\nForward diffusion of a 5-dim signal:")
+print(f"x_0  = {x0}")
+for t in [100, 500, 999]:
+    ab = alpha_bar[t]
+    eps = np.random.randn(*x0.shape)
+    xt = np.sqrt(ab) * x0 + np.sqrt(1 - ab) * eps
+    print(f"x_{t} = {xt.round(3)}")
+```
+
+```quiz
+[{
+    question: "What does the forward diffusion process do to the input data over T timesteps?",
+    options: [
+      "Compresses it into a low-dimensional latent vector",
+      "Gradually adds Gaussian noise until the signal approaches N(0,I)",
+      "Encodes it using a learned transformer encoder",
+      "Applies a series of learned nonlinear transformations"
+    ],
+    correct: 1,
+    explanation: "The forward process incrementally mixes Gaussian noise into the data. By step T, the signal is nearly pure noise drawn from N(0,I), regardless of the original input."
+  },
+  {
+    question: "Why does DDIM achieve much faster sampling than DDPM?",
+    options: [
+      "It uses a smaller U-Net with fewer parameters",
+      "It runs diffusion in a compressed latent space",
+      "It reformulates the reverse process as a non-Markovian ODE, allowing step-skipping",
+      "It replaces the denoising network with a GAN discriminator"
+    ],
+    correct: 2,
+    explanation: "DDIM reformulates the reverse process as a deterministic ODE rather than a Markov chain, allowing the denoising trajectory to be traversed in far fewer steps (e.g., 50 instead of 1000) with comparable quality."
+  },
+  {
+    question: "In classifier-free guidance, what does a higher guidance scale w produce?",
+    options: [
+      "More diverse outputs with less prompt adherence",
+      "Faster sampling with fewer denoising steps",
+      "Stronger prompt adherence but reduced diversity and potential saturation",
+      "A lower KL divergence in the latent space"
+    ],
+    correct: 2,
+    explanation: "Higher guidance scale w amplifies the direction toward the conditional prediction and away from the unconditional one. This sharpens prompt adherence but reduces sample diversity and can cause color saturation artifacts."
+  }]
+```

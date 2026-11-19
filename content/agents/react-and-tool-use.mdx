@@ -1,0 +1,140 @@
+---
+title: "ReAct & Tool Use"
+track: "agents"
+estimatedMinutes: 12
+description: "How LLMs reason and act in a loop — the Thought→Action→Observation cycle, tool definitions, structured output for tool calls, and multi-step tool chains."
+---
+
+## From Pure Reasoning to Acting
+
+Chain-of-thought prompting taught LLMs to reason step by step. But reasoning alone can't fetch a live stock price, run a SQL query, or write a file. **ReAct** (Reasoning + Acting) closes that gap by interleaving thought with action.
+
+The pattern, introduced by Yao et al. (2022), looks like this:
+
+```
+Thought: I need to find the population of Tokyo.
+Action: search("Tokyo population 2024")
+Observation: Tokyo metropolitan population is approximately 37.4 million.
+Thought: I have the answer.
+Action: finish("37.4 million")
+```
+
+Each loop iteration produces a **Thought** (internal reasoning), an **Action** (tool call), and an **Observation** (tool result). The model continues until it reaches a terminal action or a step limit.
+
+## Tool Definitions
+
+Modern LLM APIs expose tool use via structured **tool definitions** — a name, a description, and a JSON Schema for parameters:
+
+```json
+{
+  "name": "search",
+  "description": "Search the web for a query. Use for current events or factual lookups.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": { "type": "string", "description": "The search query" }
+    },
+    "required": ["query"]
+  }
+}
+```
+
+The model returns a **structured tool call** (not free text) when it wants to invoke a tool. Your application executes it, appends the result as an Observation, and re-invokes the model. This continues until the model returns a plain assistant message with no tool call.
+
+**Description quality is critical.** The model selects tools entirely based on name + description. Vague descriptions cause wrong tool selection; precise descriptions reduce hallucinated calls.
+
+## ReAct vs Pure Chain-of-Thought
+
+| | Chain-of-Thought | ReAct |
+|---|---|---|
+| Grounding | None — relies on training data | Real-time via tool observations |
+| Errors | Propagate silently | Observable and correctable |
+| Multi-step | Synthetic reasoning only | Each step can verify via tools |
+| Latency | Low (single call) | Higher (N tool round-trips) |
+
+ReAct is strictly more capable for tasks that need external state, but it costs more in latency and tokens.
+
+## Error Handling and Tool Chains
+
+Robust ReAct implementations handle three failure modes:
+
+1. **Tool error** — the tool returns an error. The model should observe it and try a fallback.
+2. **Empty result** — the tool returns nothing useful. The model should rephrase and retry.
+3. **Loop** — the model repeats the same action. Apply a step limit (typically 10–25 steps) and a deduplication check.
+
+Multi-step chains work naturally: the model can call `search`, then `extract_table`, then `compute_sum` — each result feeding the next thought.
+
+<TransformerBlock animate />
+
+## Simulating Tool Selection with Confidence Scores
+
+```python runnable
+import numpy as np
+
+np.random.seed(42)
+
+# Simulate a ReAct loop: 5 candidate actions, 3 reasoning steps
+# Each step the model scores candidate actions; we pick argmax
+
+tools = ["search", "calculator", "read_file", "write_file", "finish"]
+
+# Simulated logit scores from the model at each step (shape: steps x tools)
+logits = np.array([
+    [2.1, 0.3, 0.8, 0.2, -0.5],  # step 1: lean toward search
+    [0.4, 2.8, 0.1, 0.1,  0.3],  # step 2: lean toward calculator
+    [0.1, 0.2, 0.0, 0.0,  3.1],  # step 3: finish
+])
+
+def softmax(x):
+    e = np.exp(x - x.max())
+    return e / e.sum()
+
+print(f"{'Step':<6} {'Selected Tool':<15} {'Confidence':>10}")
+print("-" * 35)
+for step, row in enumerate(logits, 1):
+    probs = softmax(row)
+    chosen = np.argmax(probs)
+    print(f"{step:<6} {tools[chosen]:<15} {probs[chosen]:>10.1%}")
+
+# Show full distribution at step 1
+print("\\nFull probability distribution at step 1:")
+for tool, p in zip(tools, softmax(logits[0])):
+    bar = "█" * int(p * 30)
+    print(f"  {tool:<12} {p:.1%}  {bar}")
+```
+
+```quiz
+[{
+    question: "In the ReAct pattern, what does the 'Observation' represent?",
+    options: [
+      "The model's internal reasoning step",
+      "The structured tool call JSON",
+      "The result returned by executing a tool",
+      "The final answer to the user"
+    ],
+    correct: 2,
+    explanation: "An Observation is the output returned by a tool after the model's Action is executed. It is appended to the context so the model can reason about the result in its next Thought."
+  },
+  {
+    question: "Why is a tool's description more important than its name for LLM tool selection?",
+    options: [
+      "The API ignores the name field entirely",
+      "The model selects tools based on semantic match between task and description",
+      "Descriptions are used for logging, not selection",
+      "Names must follow a fixed schema so only descriptions are flexible"
+    ],
+    correct: 1,
+    explanation: "The model has no special knowledge of tool names — it selects tools by matching the task context against tool descriptions semantically. A vague description leads to wrong or missed tool calls."
+  },
+  {
+    question: "What is the primary advantage of ReAct over pure chain-of-thought?",
+    options: [
+      "ReAct uses fewer tokens per task",
+      "ReAct never makes reasoning errors",
+      "ReAct can ground each step in real external observations",
+      "ReAct does not require a system prompt"
+    ],
+    correct: 2,
+    explanation: "ReAct interleaves reasoning with real tool calls, grounding each step in live observations rather than relying solely on the model's (potentially outdated or hallucinated) training knowledge."
+  }]
+```

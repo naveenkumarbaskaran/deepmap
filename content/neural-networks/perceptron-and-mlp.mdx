@@ -1,0 +1,139 @@
+---
+title: "Perceptron & MLP"
+track: "neural-networks"
+estimatedMinutes: 14
+description: "From the biological neuron to the perceptron, to multi-layer networks. Learn how weighted sums, bias, and activation functions combine into universal function approximators."
+---
+
+## From Biology to Math
+
+The perceptron is the simplest computational model of a neuron. A biological neuron receives signals through dendrites, integrates them, and fires if the total exceeds a threshold. We capture this with three elements: **weights**, a **bias**, and an **activation function**.
+
+Given an input vector **x** ∈ ℝⁿ, a perceptron computes:
+
+```
+z = w₁x₁ + w₂x₂ + ... + wₙxₙ + b  =  wᵀx + b
+output = activation(z)
+```
+
+The weight **wᵢ** controls how much input **xᵢ** matters. The bias **b** shifts the decision boundary independently of the inputs — without it, every hyperplane the neuron can learn must pass through the origin.
+
+## The XOR Problem and Why Depth Matters
+
+A single perceptron is a **linear classifier**. It draws one hyperplane through input space. This is enough for OR and AND, but XOR is not linearly separable — no single line separates (0,1) and (1,0) from (0,0) and (1,1).
+
+Minsky and Papert showed this limitation in 1969. The fix is depth: stack layers so that each layer learns a new representation of the data. By the time the XOR input reaches the final layer, an intermediate layer has already re-mapped it into a linearly separable form.
+
+## Multi-Layer Perceptron (MLP)
+
+An MLP adds one or more **hidden layers** between input and output. Each layer applies an affine transform followed by a nonlinear activation:
+
+```
+h¹ = activation(W¹x + b¹)
+h² = activation(W²h¹ + b²)
+ŷ = W³h² + b³        ← output layer (no activation for regression)
+```
+
+The **Universal Approximation Theorem** (Cybenko 1989, Hornik 1991) guarantees that a single hidden layer with enough neurons can approximate any continuous function on a compact domain to arbitrary precision. In practice, **depth is more efficient than width** — you need exponentially more neurons in a single layer to match what two layers achieve for certain functions.
+
+## Forward Pass
+
+Each layer is a matrix multiply followed by an elementwise nonlinearity. No feedback, no loops — just left-to-right computation. This is the **forward pass**. During training, we reverse it in the **backward pass** (backpropagation) to compute gradients.
+
+<NeuronDiagram animate />
+
+## Code: Perceptron and MLP Forward Pass
+
+```python runnable
+import numpy as np
+
+# ── Single Perceptron ──────────────────────────────────────────────────────────
+def relu(z):
+    return np.maximum(0, z)
+
+def sigmoid(z):
+    return 1 / (1 + np.exp(-z))
+
+# 3-input perceptron
+x = np.array([0.5, -1.2, 0.8])          # input
+w = np.array([0.4,  0.3, -0.7])         # weights
+b = 0.1                                  # bias
+
+z = np.dot(w, x) + b
+out = relu(z)
+print(f"Perceptron  z={z:.4f}  ReLU(z)={out:.4f}")
+
+# ── 2-Layer MLP (NumPy from scratch) ──────────────────────────────────────────
+np.random.seed(42)
+
+# Network: input_dim=4  hidden=8  output=2
+def forward(x, W1, b1, W2, b2):
+    h = relu(W1 @ x + b1)      # hidden layer
+    y = W2 @ h + b2            # output layer (raw logits)
+    return h, y
+
+input_dim, hidden_dim, output_dim = 4, 8, 2
+
+W1 = np.random.randn(hidden_dim, input_dim)  * 0.1
+b1 = np.zeros(hidden_dim)
+W2 = np.random.randn(output_dim, hidden_dim) * 0.1
+b2 = np.zeros(output_dim)
+
+x_in = np.array([1.0, 0.5, -0.3, 0.9])
+h, logits = forward(x_in, W1, b1, W2, b2)
+
+print(f"\\nHidden activations (first 4): {h[:4].round(4)}")
+print(f"Output logits:                 {logits.round(4)}")
+
+# ── XOR with a 2→2→1 MLP (hand-crafted weights) ───────────────────────────────
+# Shows that an MLP CAN solve XOR
+W1_xor = np.array([[1, 1], [1, 1]], dtype=float)
+b1_xor = np.array([-0.5, -1.5])
+W2_xor = np.array([[1, -2]], dtype=float)
+b2_xor = np.array([0.0])
+
+def step(z): return (z > 0).astype(float)
+
+print("\\nXOR truth table via MLP:")
+for a, b_ in [(0,0),(0,1),(1,0),(1,1)]:
+    x_ = np.array([a, b_], dtype=float)
+    h_ = step(W1_xor @ x_ + b1_xor)
+    y_ = step(W2_xor @ h_ + b2_xor)
+    print(f"  {a} XOR {b_} → {int(y_[0])}")
+```
+
+```quiz
+[{
+    question: "Why can't a single perceptron solve XOR?",
+    options: [
+      "It has too few weights",
+      "XOR is not a linearly separable problem",
+      "The bias term is missing",
+      "It requires a softmax output"
+    ],
+    correct: 1,
+    explanation: "A single perceptron draws one linear decision boundary (hyperplane). XOR requires two boundaries to separate the four input combinations correctly, so it cannot be represented by a single linear classifier."
+  },
+  {
+    question: "What role does the bias term play in a perceptron?",
+    options: [
+      "It scales the input magnitude",
+      "It makes the network deeper",
+      "It shifts the decision boundary off the origin",
+      "It prevents overfitting"
+    ],
+    correct: 2,
+    explanation: "Without bias, every linear decision boundary must pass through the origin. The bias allows the boundary to be positioned anywhere in input space, giving the neuron much more expressive power."
+  },
+  {
+    question: "What does the Universal Approximation Theorem guarantee?",
+    options: [
+      "Any MLP will converge during training",
+      "A single hidden layer with enough neurons can approximate any continuous function",
+      "Deeper networks always generalise better than shallow ones",
+      "Weights initialised to zero will reach a good solution"
+    ],
+    correct: 1,
+    explanation: "The UAT guarantees that a single hidden layer MLP with sufficient neurons can approximate any continuous function on a compact domain to arbitrary precision. It says nothing about learnability, optimisation, or generalisation."
+  }]
+```

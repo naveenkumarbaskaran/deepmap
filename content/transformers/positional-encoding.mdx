@@ -1,0 +1,112 @@
+---
+title: "Positional Encoding"
+track: "transformers"
+estimatedMinutes: 10
+description: "Explore why transformers are permutation-invariant by default and how positional encodings — sinusoidal, learned, RoPE, and ALiBi — inject sequence order information."
+---
+
+## The Permutation Problem
+
+Self-attention computes pairwise token similarities, but the operation is symmetric: shuffle the input tokens and you get the same attention weights, just reordered. Without explicit positional information, "the cat sat on the mat" and "mat the on sat cat the" look identical to a transformer.
+
+To fix this, **positional encodings** are added to (or woven into) token embeddings before the first layer.
+
+## Sinusoidal Positional Encoding
+
+The original "Attention Is All You Need" (Vaswani et al., 2017) paper used fixed, deterministic encodings based on sine and cosine functions of different frequencies:
+
+```
+PE(pos, 2i)   = sin(pos / 10000^(2i/d_model))
+PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+```
+
+Each position `pos` gets a unique d_model-dimensional vector. Even dimensions use sin, odd dimensions use cos. The frequencies vary geometrically across dimensions: low-frequency waves capture long-range position, high-frequency waves capture fine-grained order.
+
+**Key property:** `PE(pos + k)` can be expressed as a linear function of `PE(pos)` for any offset k — meaning the model can learn to attend to relative positions by learning appropriate weight matrices.
+
+**Extrapolation:** Because the encodings are deterministic functions, the model can in principle handle sequences longer than those seen during training, though quality degrades.
+
+## Learned Positional Embeddings
+
+GPT and BERT use a lookup table: each position index `0 … max_seq_len` has a trainable embedding vector added to the token embedding. This is simpler and often performs comparably to sinusoidal encoding within the training length. The downside: the model cannot generalize to positions beyond `max_seq_len`.
+
+## RoPE — Rotary Position Embeddings
+
+Used in LLaMA, GPT-NeoX, and GPT-4. Instead of adding a position vector to the embedding, RoPE rotates Q and K vectors in 2D subspaces by an angle proportional to position. The dot product `Q·K` then naturally encodes relative position: tokens that are close together have similar rotations, distant tokens diverge.
+
+RoPE's main advantage: attention scores depend on relative distance only, not absolute position. This provides much better length extrapolation than absolute encodings.
+
+## ALiBi — Attention with Linear Biases
+
+ALiBi (Press et al., 2021) adds no positional encoding to embeddings at all. Instead, it subtracts a linear bias from attention scores: tokens further apart get a larger penalty. The bias is head-specific (different slopes per head). ALiBi extrapolates cleanly to sequences 2–10× longer than training length with minimal degradation.
+
+<TransformerBlock animate />
+
+## Sinusoidal Encoding in NumPy
+
+```python runnable
+import numpy as np
+
+def sinusoidal_pe(max_seq_len, d_model):
+    pe = np.zeros((max_seq_len, d_model))
+    pos = np.arange(max_seq_len)[:, np.newaxis]       # (seq, 1)
+    i   = np.arange(0, d_model, 2)[np.newaxis, :]     # (1, d_model/2)
+    div = np.power(10000, i / d_model)                 # frequency denominators
+    pe[:, 0::2] = np.sin(pos / div)   # even dims: sin
+    pe[:, 1::2] = np.cos(pos / div)   # odd dims:  cos
+    return pe
+
+PE = sinusoidal_pe(max_seq_len=10, d_model=16)
+print("PE shape:", PE.shape)
+print("\\nFirst 4 positions, first 8 dims:")
+print(np.round(PE[:4, :8], 3))
+
+# Check the pattern: each dimension oscillates at a different frequency
+print("\\nDim 0 (highest freq sin) across positions:")
+print(np.round(PE[:, 0], 3))
+print("Dim 14 (lowest freq sin) across positions:")
+print(np.round(PE[:, 14], 3))
+
+# Verify that similar positions have similar encodings
+dots = PE @ PE.T
+print("\\nDot-product similarity between positions (higher = more similar):")
+print(np.round(dots[:5, :5], 1))
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "Why are transformers described as 'permutation-invariant' without positional encoding?",
+    options: [
+      "Because the feed-forward layers process tokens independently",
+      "Because attention scores depend only on content similarity, not position",
+      "Because layer normalization removes positional information",
+      "Because token embeddings are identical for the same word regardless of position"
+    ],
+    correct: 1,
+    explanation: "Self-attention computes dot products between Q and K vectors derived from token embeddings. These scores depend only on content, not sequence order. Shuffle the tokens and you get the same pairwise scores — the model is blind to position without explicit encoding."
+  },
+  {
+    question: "Which positional encoding scheme provides the best extrapolation to sequences longer than the training length?",
+    options: [
+      "Learned positional embeddings (GPT/BERT style)",
+      "Sinusoidal encoding (original transformer)",
+      "ALiBi (Attention with Linear Biases)",
+      "All schemes extrapolate equally well"
+    ],
+    correct: 2,
+    explanation: "ALiBi extrapolates most reliably because it encodes relative distance as a simple linear penalty, with no learned parameters that could overfit to training-time positions. Learned embeddings have no entries beyond max_seq_len; sinusoidal encoding degrades; ALiBi handles 2–10× length generalization cleanly."
+  },
+  {
+    question: "In sinusoidal positional encoding, why does each dimension use a different frequency?",
+    options: [
+      "To ensure the encodings are orthogonal to token embeddings",
+      "So the model can represent both coarse (low-freq) and fine-grained (high-freq) position",
+      "To reduce the memory cost of storing the encoding table",
+      "Because learned embeddings also vary frequency across dimensions"
+    ],
+    correct: 1,
+    explanation: "Different frequencies allow the encoding to represent position at multiple scales simultaneously. High-frequency dimensions (fast oscillation) distinguish nearby positions; low-frequency dimensions (slow oscillation) distinguish positions far apart. Together they give each position a unique fingerprint across d_model dimensions."
+  }]
+```

@@ -1,17 +1,31 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, Children } from "react";
 import { motion } from "framer-motion";
+import React from "react";
 
 interface CodeRunnerProps {
-  code: string;
+  code?: string;
+  children?: React.ReactNode;
   language?: string;
+}
+
+function extractCode(children: React.ReactNode): string {
+  if (!children) return "";
+  if (typeof children === "string") return children.trim();
+  if (Array.isArray(children)) {
+    return children.map(c => typeof c === "string" ? c : "").join("").trim();
+  }
+  const flat = Children.toArray(children);
+  const result = flat.map((c) => (typeof c === "string" ? c : "")).join("").trim();
+  return result;
 }
 
 let pyodideInstance: unknown = null;
 
-export function CodeRunner({ code, language = "python" }: CodeRunnerProps) {
-  const [userCode, setUserCode] = useState(code);
+export function CodeRunner({ code, children, language = "python" }: CodeRunnerProps) {
+  const initialCode = code ?? extractCode(children);
+  const [userCode, setUserCode] = useState(initialCode);
   const [output, setOutput] = useState<string>("");
   const [running, setRunning] = useState(false);
   const [pyodideReady, setPyodideReady] = useState<boolean | "loading">(false);
@@ -19,8 +33,9 @@ export function CodeRunner({ code, language = "python" }: CodeRunnerProps) {
 
   async function loadPyodide() {
     if (pyodideInstance) return pyodideInstance;
-    // @ts-expect-error — pyodide loaded from CDN
-    const { loadPyodide: load } = await import("https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.mjs");
+    // Use Function constructor to bypass Turbopack's dynamic import interception
+    // eslint-disable-next-line no-new-func
+    const { loadPyodide: load } = await new Function('url', 'return import(url)')("https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.mjs");
     pyodideInstance = await load();
     return pyodideInstance;
   }
@@ -40,11 +55,15 @@ export function CodeRunner({ code, language = "python" }: CodeRunnerProps) {
     try {
       const pyodide = await loadPyodide() as {
         runPythonAsync: (code: string) => Promise<unknown>;
+        loadPackagesFromImports: (code: string) => Promise<void>;
         globals: { get: (key: string) => unknown };
         setStdout: (opts: { batched: (s: string) => void }) => void;
         setStderr: (opts: { batched: (s: string) => void }) => void;
       };
       setPyodideReady(true);
+
+      // Auto-load any packages the code imports (numpy, pandas, matplotlib, etc.)
+      await pyodide.loadPackagesFromImports(userCode);
 
       const lines: string[] = [];
       pyodide.setStdout({ batched: (s) => lines.push(s) });
@@ -114,8 +133,8 @@ export function CodeRunner({ code, language = "python" }: CodeRunnerProps) {
         spellCheck={false}
         className="w-full resize-none text-sm font-mono outline-none p-4"
         style={{
-          background: "#0d0d1a",
-          color: "#a5b4fc",
+          background: "var(--surface)",
+          color: "var(--foreground)",
           minHeight: "120px",
           caretColor: "#6366f1",
         }}
@@ -139,8 +158,8 @@ export function CodeRunner({ code, language = "python" }: CodeRunnerProps) {
           <pre
             className="p-4 text-sm font-mono overflow-x-auto"
             style={{
-              background: "#080810",
-              color: output.startsWith("Error:") ? "#fca5a5" : "#6ee7b7",
+              background: "var(--background)",
+              color: output.startsWith("Error:") ? "#ef4444" : "#10b981",
               margin: 0,
             }}
           >

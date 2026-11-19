@@ -1,0 +1,136 @@
+---
+title: "Batch Normalization"
+track: "deep-learning"
+estimatedMinutes: 10
+description: "Internal covariate shift, the BN forward pass, training vs inference behavior, LayerNorm, and why BN smooths the optimization landscape."
+---
+
+## The Internal Covariate Shift Problem
+
+As a network trains, the distribution of each layer's input changes because the parameters of all preceding layers change simultaneously. The layer must continually re-adapt to a shifting input distribution — this is **internal covariate shift** (Ioffe and Szegedy, 2015). It slows training and forces the use of small learning rates and careful initialization to avoid saturating nonlinearities.
+
+Batch normalization addresses this by normalizing the input to each layer, stabilizing distributions throughout the network.
+
+## The BN Algorithm
+
+For a mini-batch `B = {x₁, …, xₘ}` and a given layer input `x`:
+
+1. **Compute batch statistics:**  
+   `μ_B = (1/m) Σ xᵢ`  
+   `σ²_B = (1/m) Σ (xᵢ − μ_B)²`
+
+2. **Normalize:**  
+   `x̂ᵢ = (xᵢ − μ_B) / √(σ²_B + ε)`
+
+3. **Scale and shift with learned parameters γ and β:**  
+   `yᵢ = γ · x̂ᵢ + β`
+
+The learned `γ` (scale) and `β` (shift) allow the network to undo the normalization if needed. Without them, BN would force every layer to have zero mean and unit variance, constraining representation.
+
+## Training vs Inference
+
+During **training**, BN uses the statistics of the current mini-batch. This introduces noise — each example's normalization depends on which other examples it is batched with. This noise acts as a mild regularizer (similar to dropout).
+
+During **inference**, using batch statistics would make predictions dependent on batch composition, which is undesirable for single-example prediction. Instead, BN maintains **running estimates** of the population mean and variance during training (exponential moving averages). At inference, these fixed statistics are used.
+
+The implication: a model's behavior in `training` mode and `eval` mode is different. Forgetting to switch modes is a common source of bugs.
+
+## LayerNorm: The Transformer Alternative
+
+LayerNorm normalizes across the feature dimension rather than the batch dimension. For a single sample `x ∈ ℝᵈ`:
+
+`x̂ = (x − μ_x) / σ_x`,  then scale and shift with γ, β
+
+Because LayerNorm computes statistics per sample, its behavior is identical at training and inference. It is sequence-length and batch-size agnostic, making it the standard choice for transformers, where variable-length sequences and small batch sizes are common.
+
+## Why BN Helps Optimization
+
+Ioffe and Szegedy attributed BN's benefit to reducing internal covariate shift. Later work (Santurkar et al., 2018) showed the picture is more nuanced: BN smooths the loss landscape itself. Normalized activations prevent the loss surface from developing sharp curvature, enabling larger learning rates and faster convergence. The regularization effect comes partly from this smoothness and partly from the batch noise.
+
+<NeuronDiagram animate />
+
+## Interactive Code
+
+```python runnable
+import numpy as np
+
+np.random.seed(42)
+
+def batch_norm_forward(X, gamma, beta, eps=1e-8):
+    """
+    X: (batch_size, features)
+    gamma, beta: (features,) — learned scale and shift
+    Returns: normalized output Y, cache for backward pass
+    """
+    mu    = X.mean(axis=0)                # per-feature batch mean
+    var   = X.var(axis=0)                 # per-feature batch variance
+    X_hat = (X - mu) / np.sqrt(var + eps) # normalize
+    Y     = gamma * X_hat + beta          # scale + shift
+    return Y, (mu, var, X_hat)
+
+# Simulate a batch of 8 samples, 4 features
+batch_size, n_features = 8, 4
+X = np.random.randn(batch_size, n_features) * 5 + 3   # mean~3, std~5
+
+# Initialize gamma=1, beta=0 (identity transform initially)
+gamma = np.ones(n_features)
+beta  = np.zeros(n_features)
+
+Y, (mu, var, X_hat) = batch_norm_forward(X, gamma, beta)
+
+print("Input statistics (before BN):")
+print(f"  per-feature mean: {X.mean(axis=0).round(3)}")
+print(f"  per-feature std:  {X.std(axis=0).round(3)}")
+
+print("\\nOutput statistics (after BN, gamma=1 beta=0):")
+print(f"  per-feature mean: {Y.mean(axis=0).round(6)}  (should be ~0)")
+print(f"  per-feature std:  {Y.std(axis=0).round(6)}   (should be ~1)")
+
+# Now with learned gamma and beta (simulate trained values)
+gamma2 = np.array([2.0, 0.5, 1.0, 3.0])
+beta2  = np.array([1.0, -1.0, 0.0, 0.5])
+Y2, _ = batch_norm_forward(X, gamma2, beta2)
+
+print("\\nAfter applying learned gamma and beta:")
+print(f"  per-feature mean: {Y2.mean(axis=0).round(3)}")
+print(f"  per-feature std:  {Y2.std(axis=0).round(3)}")
+print("  (gamma/beta let the network recover any distribution it needs)")
+```
+
+## Quiz
+
+```quiz
+[{
+    question: "Why does batch normalization behave differently during training and inference?",
+    options: [
+      "Gamma and beta are frozen at inference",
+      "Training uses per-batch statistics which vary by sample; inference uses fixed population statistics",
+      "Dropout is applied alongside BN only during training",
+      "Inference uses a larger epsilon for numerical stability"
+    ],
+    correct: 1,
+    explanation: "During training, each batch's mean and variance depend on which samples are in that batch, introducing helpful noise. At inference, using per-batch statistics would make a single prediction depend on other examples in the batch. BN stores running estimates of population statistics during training and uses those fixed values at inference, ensuring deterministic output."
+  },
+  {
+    question: "What is the role of the learned parameters γ and β in batch normalization?",
+    options: [
+      "They replace the weight matrix of the normalized layer",
+      "They control the dropout probability",
+      "They allow the network to rescale and shift normalized activations, recovering any distribution if needed",
+      "They store the running mean and variance for inference"
+    ],
+    correct: 2,
+    explanation: "After normalizing to zero mean and unit variance, γ and β give the network the freedom to output any mean and scale. Without them, every layer would be forced into unit Gaussian activations, limiting representational capacity. With them, BN can be a no-op (γ=std, β=mean of unnormalized input) or any other transformation."
+  },
+  {
+    question: "Why is LayerNorm preferred over BatchNorm in transformer models?",
+    options: [
+      "LayerNorm is faster to compute than BatchNorm",
+      "LayerNorm normalizes across features per sample, so it has identical training and inference behavior and handles variable batch sizes",
+      "LayerNorm does not require learned scale and shift parameters",
+      "BatchNorm is incompatible with attention mechanisms"
+    ],
+    correct: 1,
+    explanation: "LayerNorm computes statistics across the feature dimension for each sample independently. This means its behavior is the same regardless of batch size — including batch size 1 — and is identical at training and inference time. Transformers process variable-length sequences and often use small or single-element batches, making LayerNorm the natural fit."
+  }]
+```

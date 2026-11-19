@@ -18,7 +18,7 @@ const LAYERS = [
 
 export function TransformerBlock({ showMask = false, animate = true }: TransformerBlockProps) {
   return (
-    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "#080810" }}>
+    <div className="my-4 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
       <svg width="100%" viewBox="0 0 320 320" style={{ display: "block" }}>
         {/* Title */}
         <text x={160} y={20} textAnchor="middle" fill="#64748b" fontSize={11} fontWeight="600">
