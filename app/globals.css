@@ -15,6 +15,12 @@
   --track-transformers: #06b6d4;
   --track-llms: #10b981;
   --track-agents: #f59e0b;
+  /* Hero/Nav specific */
+  --nav-bg: rgba(10,10,15,0.85);
+  --hero-overlay: radial-gradient(ellipse at center, rgba(10,10,15,0.5) 0%, rgba(10,10,15,0.15) 70%);
+  --hero-btn-secondary-bg: rgba(17,17,24,0.8);
+  --hero-btn-secondary-border: rgba(255,255,255,0.1);
+  --hero-btn-secondary-color: #e2e8f0;
 }
 
 /* Light mode */
@@ -23,13 +29,19 @@
   --surface: #ffffff;
   --border: #e2e8f0;
   --foreground: #0f172a;
-  --muted: #94a3b8;
+  --muted: #64748b;
   --track-math: #4f46e5;
   --track-nn: #7c3aed;
   --track-dl: #2563eb;
   --track-transformers: #0891b2;
   --track-llms: #059669;
   --track-agents: #d97706;
+  /* Hero/Nav specific */
+  --nav-bg: rgba(248,250,252,0.9);
+  --hero-overlay: radial-gradient(ellipse at center, rgba(248,250,252,0.6) 0%, rgba(248,250,252,0.1) 70%);
+  --hero-btn-secondary-bg: rgba(255,255,255,0.9);
+  --hero-btn-secondary-border: rgba(0,0,0,0.1);
+  --hero-btn-secondary-color: #0f172a;
 }
 
 * {
@@ -105,5 +117,16 @@ body {
 
 /* KaTeX */
 .katex {
-  color: var(--track-math);
+  color: var(--foreground);
+  font-size: 1.05em;
+}
+
+.katex-display {
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  padding: 0.5rem 0;
+}
+
+.lesson-prose .katex {
+  color: var(--foreground);
 }

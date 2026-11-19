@@ -100,7 +100,15 @@ export function KnowledgeGraph({ onNodeClick, activeSlug }: KnowledgeGraphProps)
             if (data.state === "complete") return "#10b981";
             return trackColors[data.track] ?? "#6366f1";
           }}
-          style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          nodeStrokeWidth={0}
+          maskColor="rgba(0,0,0,0.5)"
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+            width: 160,
+            height: 100,
+          }}
           className="!bottom-4 !right-4"
         />
       </ReactFlow>

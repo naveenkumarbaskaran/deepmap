@@ -14,7 +14,7 @@ export default function HomePage() {
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 50,
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "16px 24px",
-          background: "rgba(10,10,15,0.85)",
+          background: "var(--nav-bg)",
           borderBottom: "1px solid var(--border)",
           backdropFilter: "blur(12px)",
         }}
@@ -52,7 +52,7 @@ export default function HomePage() {
             justifyContent: "center",
             textAlign: "center",
             padding: "0 24px",
-            background: "radial-gradient(ellipse at center, rgba(10,10,15,0.5) 0%, rgba(10,10,15,0.15) 70%)",
+            background: "var(--hero-overlay)",
           }}
         >
           <div
@@ -99,8 +99,8 @@ export default function HomePage() {
               style={{
                 padding: "14px 32px", borderRadius: "12px", fontSize: "1rem",
                 fontWeight: 600, color: "#e2e8f0", textDecoration: "none",
-                background: "rgba(17,17,24,0.8)", border: "1px solid rgba(255,255,255,0.1)",
-                display: "inline-block",
+                background: "var(--hero-btn-secondary-bg)", border: "1px solid var(--hero-btn-secondary-border)",
+                display: "inline-block", color: "var(--hero-btn-secondary-color)",
               }}
             >
               GitHub →
