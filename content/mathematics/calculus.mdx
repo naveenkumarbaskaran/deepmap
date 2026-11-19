@@ -11,22 +11,24 @@ Training a neural network is an optimization problem: find weights that minimize
 
 ## Derivatives
 
-The derivative `f'(x)` measures the instantaneous rate of change of `f` at `x`. Geometrically, it's the slope of the tangent line.
+The derivative $f'(x)$ measures the instantaneous rate of change of $f$ at $x$. Geometrically, it's the slope of the tangent line.
 
 Key rules:
-- **Power rule**: `d/dx [xⁿ] = nxⁿ⁻¹`
-- **Chain rule**: `d/dx [f(g(x))] = f'(g(x)) · g'(x)` — this is backpropagation
-- **Product rule**: `d/dx [f·g] = f'g + fg'`
+- **Power rule**: $\frac{d}{dx}[x^n] = nx^{n-1}$
+- **Chain rule**: $\frac{d}{dx}[f(g(x))] = f'(g(x)) \cdot g'(x)$ — this is backpropagation
+- **Product rule**: $\frac{d}{dx}[f \cdot g] = f'g + fg'$
 
 ## The Chain Rule is Backpropagation
 
-The chain rule lets us differentiate compositions of functions. A neural network is exactly that — a composition of linear transformations and nonlinearities. When we compute `dL/dW` for a weight matrix W deep in the network, we're applying the chain rule repeatedly through every layer.
+The chain rule lets us differentiate compositions of functions. A neural network is exactly that — a composition of linear transformations and nonlinearities. When we compute $\frac{\partial L}{\partial W}$ for a weight matrix $W$ deep in the network, we're applying the chain rule repeatedly through every layer.
 
 ## Gradients
 
-The **gradient** `∇f(x)` generalizes the derivative to multiple dimensions. It's a vector of partial derivatives: `∇f = [∂f/∂x₁, ∂f/∂x₂, ..., ∂f/∂xₙ]`.
+The **gradient** $\nabla f(\mathbf{x})$ generalizes the derivative to multiple dimensions. It's a vector of partial derivatives:
 
-The gradient always points in the direction of **steepest increase**. So to minimize `f`, we move in the *negative* gradient direction — gradient descent.
+$$\nabla f = \left[\frac{\partial f}{\partial x_1},\ \frac{\partial f}{\partial x_2},\ \ldots,\ \frac{\partial f}{\partial x_n}\right]$$
+
+The gradient always points in the direction of **steepest increase**. So to minimize $f$, we move in the *negative* gradient direction — gradient descent.
 
 ## Jacobians and Hessians
 
@@ -35,8 +37,9 @@ The gradient always points in the direction of **steepest increase**. So to mini
 
 ## Taylor Series
 
-Any smooth function can be approximated near a point `a` as:
-`f(x) ≈ f(a) + f'(a)(x-a) + ½f''(a)(x-a)² + ...`
+Any smooth function can be approximated near a point $a$ as:
+
+$$f(x) \approx f(a) + f'(a)(x-a) + \tfrac{1}{2}f''(a)(x-a)^2 + \cdots$$
 
 This first-order approximation underpins gradient descent. The second-order term explains why regions of high curvature need smaller learning rates.
 
@@ -68,7 +71,7 @@ def grad_g(x, y):
     return np.array([dg_dx, dg_dy])
 
 x, y = 1.0, 2.0
-print(f"\\nGradient of g at ({x},{y}):", grad_g(x, y))
+print(f"\nGradient of g at ({x},{y}):", grad_g(x, y))
 print("Gradient points toward steepest ascent")
 ```
 

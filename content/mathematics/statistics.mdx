@@ -13,10 +13,10 @@ Probability tells us how to reason about random processes. Statistics flips the 
 
 Before modeling, describe your data:
 
-- **Mean** `μ = (1/n) Σ xᵢ` — central tendency; sensitive to outliers
+- **Mean** $\mu = \frac{1}{n}\sum_i x_i$ — central tendency; sensitive to outliers
 - **Median** — middle value; robust to outliers
-- **Variance** `σ² = (1/n) Σ (xᵢ - μ)²` — spread around the mean
-- **Standard deviation** `σ` — same units as the data; easier to interpret
+- **Variance** $\sigma^2 = \frac{1}{n}\sum_i (x_i - \mu)^2$ — spread around the mean
+- **Standard deviation** $\sigma$ — same units as the data; easier to interpret
 - **Skewness** — asymmetry of the distribution (long left or right tail)
 - **Kurtosis** — weight in the tails (heavy-tailed vs light-tailed)
 
@@ -24,26 +24,26 @@ For ML: always check these before training. High variance features may need norm
 
 ## Covariance and Correlation
 
-**Covariance** `Cov(X, Y) = E[(X - μₓ)(Y - μᵧ)]` measures how two variables move together. Positive means they rise together; negative means one rises as the other falls.
+**Covariance** $\operatorname{Cov}(X, Y) = \mathbb{E}[(X - \mu_X)(Y - \mu_Y)]$ measures how two variables move together. Positive means they rise together; negative means one rises as the other falls.
 
-**Pearson correlation** `ρ = Cov(X,Y) / (σₓ · σᵧ)` normalizes covariance to `[-1, 1]`. It measures *linear* association only. The correlation matrix across all features reveals redundancy (high ρ = multicollinearity) and informs feature selection.
+**Pearson correlation** $\rho = \frac{\operatorname{Cov}(X,Y)}{\sigma_X \cdot \sigma_Y}$ normalizes covariance to $[-1, 1]$. It measures *linear* association only. The correlation matrix across all features reveals redundancy (high $\rho$ = multicollinearity) and informs feature selection.
 
 ## The Central Limit Theorem
 
-The CLT states: if you draw n independent samples from *any* distribution with finite mean μ and variance σ², their sample mean `X̄` approaches a Gaussian distribution as n → ∞:
+The CLT states: if you draw $n$ independent samples from *any* distribution with finite mean $\mu$ and variance $\sigma^2$, their sample mean $\bar{X}$ approaches a Gaussian distribution as $n \to \infty$:
 
-`X̄ ~ N(μ, σ²/n)`
+$$\bar{X} \sim \mathcal{N}\!\left(\mu,\ \frac{\sigma^2}{n}\right)$$
 
 This is why the Gaussian distribution is ubiquitous in ML: loss values, weight updates, and many model outputs are sums of many small independent contributions, so they approximately follow a Gaussian regardless of the original distribution.
 
 ## Hypothesis Testing
 
-A **hypothesis test** decides whether observed data provides enough evidence to reject a null hypothesis `H₀`. Key concepts:
+A **hypothesis test** decides whether observed data provides enough evidence to reject a null hypothesis $H_0$. Key concepts:
 
-- **p-value**: probability of seeing data this extreme if H₀ were true. Low p-value → reject H₀.
-- **Type I error (α)**: false positive — rejecting H₀ when it's true
-- **Type II error (β)**: false negative — failing to reject a false H₀
-- **Statistical power (1-β)**: probability of detecting a true effect
+- **p-value**: probability of seeing data this extreme if $H_0$ were true. Low p-value → reject $H_0$.
+- **Type I error** ($\alpha$): false positive — rejecting $H_0$ when it's true
+- **Type II error** ($\beta$): false negative — failing to reject a false $H_0$
+- **Statistical power** ($1-\beta$): probability of detecting a true effect
 
 In ML, A/B testing a new model uses these exact ideas: is the accuracy improvement real, or sampling noise?
 
@@ -51,7 +51,7 @@ In ML, A/B testing a new model uses these exact ideas: is the accuracy improveme
 
 The expected test error of any estimator decomposes as:
 
-`E[(y - ŷ)²] = Bias² + Variance + Irreducible noise`
+$$\mathbb{E}[(y - \hat{y})^2] = \text{Bias}^2 + \text{Variance} + \text{Irreducible noise}$$
 
 - **Bias**: error from wrong assumptions — underfitting. A linear model on nonlinear data has high bias.
 - **Variance**: error from sensitivity to training data fluctuations — overfitting. A depth-20 decision tree memorizes training noise.
@@ -77,7 +77,7 @@ print(f"Min/Max:  {data.min():.2f} / {data.max():.2f}")
 n_samples, sample_size = 1000, 30
 # Original distribution: heavily skewed (exponential)
 population = rng.exponential(scale=2.0, size=50000)
-print(f"\\n=== CLT Demo ===")
+print(f"\n=== CLT Demo ===")
 print(f"Population: Exponential(2). Mean={population.mean():.3f}, Std={population.std():.3f}")
 
 sample_means = [rng.choice(population, sample_size).mean() for _ in range(n_samples)]
@@ -92,7 +92,7 @@ z = rng.normal(0, 1, 200)                # independent
 
 mat = np.column_stack([x, y, z])
 corr = np.corrcoef(mat.T)
-print(f"\\n=== Correlation Matrix ===")
+print(f"\n=== Correlation Matrix ===")
 print(np.round(corr, 2))
 ```
 

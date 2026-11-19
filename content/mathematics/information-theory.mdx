@@ -11,50 +11,50 @@ Shannon's information theory was designed to measure *surprise* and *compressibi
 
 ## Entropy: Measuring Surprise
 
-The **entropy** of a discrete distribution `p` measures average surprise (or uncertainty):
+The **entropy** of a discrete distribution $p$ measures average surprise (or uncertainty):
 
-`H(p) = -Σ p(x) · log₂ p(x)`
+$$H(p) = -\sum_x p(x) \cdot \log_2 p(x)$$
 
-Intuition: a fair coin (`p=0.5`) has maximum entropy (H=1 bit). A biased coin that lands heads 99% of the time has near-zero entropy — you're almost never surprised. A uniform distribution over n outcomes has entropy `log₂(n)` — the maximum possible.
+Intuition: a fair coin ($p=0.5$) has maximum entropy ($H=1$ bit). A biased coin that lands heads 99% of the time has near-zero entropy — you're almost never surprised. A uniform distribution over $n$ outcomes has entropy $\log_2(n)$ — the maximum possible.
 
 In ML: a model is uncertain when its output distribution has high entropy. Confident predictions have low entropy. Temperature in LLM sampling directly scales entropy — higher temperature = more uniform = higher entropy = more "creative" outputs.
 
 ## Cross-Entropy: Measuring Prediction Quality
 
-**Cross-entropy** measures the average surprise when you use distribution `q` to encode data that actually follows distribution `p`:
+**Cross-entropy** measures the average surprise when you use distribution $q$ to encode data that actually follows distribution $p$:
 
-`H(p, q) = -Σ p(x) · log q(x)`
+$$H(p, q) = -\sum_x p(x) \cdot \log q(x)$$
 
-When `q = p`, cross-entropy equals entropy (optimal). When `q` is wrong, it's higher. In classification:
-- `p` = true label distribution (a one-hot vector: `[0, 0, 1, 0]`)
-- `q` = model softmax output
+When $q = p$, cross-entropy equals entropy (optimal). When $q$ is wrong, it's higher. In classification:
+- $p$ = true label distribution (a one-hot vector: $[0, 0, 1, 0]$)
+- $q$ = model softmax output
 
-The cross-entropy loss is `-log q(correct class)`. Minimizing it pushes `q` toward `p`.
+The cross-entropy loss is $-\log q(\text{correct class})$. Minimizing it pushes $q$ toward $p$.
 
 ## KL Divergence: Measuring Distribution Distance
 
-**Kullback-Leibler divergence** measures how much `q` diverges from `p`:
+**Kullback-Leibler divergence** measures how much $q$ diverges from $p$:
 
-`KL(p || q) = Σ p(x) · log(p(x) / q(x)) = H(p, q) - H(p)`
+$$KL(p \,\|\, q) = \sum_x p(x) \cdot \log\frac{p(x)}{q(x)} = H(p, q) - H(p)$$
 
 Properties:
-- `KL(p||q) ≥ 0` always (Gibbs' inequality)
-- `KL(p||q) = 0` iff `p = q`
-- **Asymmetric**: `KL(p||q) ≠ KL(q||p)` in general
+- $KL(p\|q) \ge 0$ always (Gibbs' inequality)
+- $KL(p\|q) = 0$ iff $p = q$
+- **Asymmetric**: $KL(p\|q) \ne KL(q\|p)$ in general
 
-In VAEs, KL divergence regularizes the latent space: `KL(q(z|x) || p(z))` pushes the encoder's posterior toward the standard Gaussian prior. In RL, it appears in PPO's clipping objective to prevent policy updates from drifting too far.
+In VAEs, KL divergence regularizes the latent space: $KL(q(z|x) \,\|\, p(z))$ pushes the encoder's posterior toward the standard Gaussian prior. In RL, it appears in PPO's clipping objective to prevent policy updates from drifting too far.
 
 ## Mutual Information
 
-**Mutual information** `I(X; Y)` measures how much knowing Y reduces uncertainty about X:
+**Mutual information** $I(X; Y)$ measures how much knowing $Y$ reduces uncertainty about $X$:
 
-`I(X; Y) = H(X) - H(X|Y) = KL(p(X,Y) || p(X)p(Y))`
+$$I(X; Y) = H(X) - H(X \mid Y) = KL\!\left(p(X,Y) \,\|\, p(X)p(Y)\right)$$
 
-`I(X; Y) = 0` iff X and Y are independent. In representation learning (e.g. contrastive learning, SimCLR), maximizing mutual information between views of the same data produces useful features.
+$I(X; Y) = 0$ iff $X$ and $Y$ are independent. In representation learning (e.g. contrastive learning, SimCLR), maximizing mutual information between views of the same data produces useful features.
 
 ## The Connection: Cross-Entropy is KL up to a Constant
 
-Since `H(p, q) = H(p) + KL(p||q)` and the true entropy `H(p)` doesn't depend on the model, minimizing cross-entropy loss is equivalent to minimizing `KL(p||q)`. This is why cross-entropy is the "right" loss for classification — it has a principled information-theoretic justification.
+Since $H(p, q) = H(p) + KL(p\|q)$ and the true entropy $H(p)$ doesn't depend on the model, minimizing cross-entropy loss is equivalent to minimizing $KL(p\|q)$. This is why cross-entropy is the "right" loss for classification — it has a principled information-theoretic justification.
 
 <NeuronDiagram animate />
 
@@ -86,7 +86,7 @@ confident_pred  = [0.01, 0.01, 0.97, 0.01]
 uncertain_pred  = [0.25, 0.25, 0.25, 0.25]
 wrong_pred      = [0.97, 0.01, 0.01, 0.01]
 
-print("\\n=== Cross-Entropy Loss ===")
+print("\n=== Cross-Entropy Loss ===")
 print(f"Confident correct:  {cross_entropy(true_label, confident_pred):.4f}")
 print(f"Uniform (uncertain):{cross_entropy(true_label, uncertain_pred):.4f}")
 print(f"Confident wrong:    {cross_entropy(true_label, wrong_pred):.4f}")
@@ -94,7 +94,7 @@ print(f"Confident wrong:    {cross_entropy(true_label, wrong_pred):.4f}")
 # 3. KL divergence
 p = np.array([0.4, 0.4, 0.2])
 q = np.array([0.33, 0.33, 0.34])
-print(f"\\n=== KL Divergence ===")
+print(f"\n=== KL Divergence ===")
 print(f"KL(p||q) = {kl_divergence(p, q):.4f}")
 print(f"KL(q||p) = {kl_divergence(q, p):.4f}  (asymmetric)")
 ```

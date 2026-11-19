@@ -11,50 +11,52 @@ Machine learning models don't output facts — they output *beliefs*. A classifi
 
 ## Random Variables and Distributions
 
-A **random variable** X maps outcomes of a random process to numbers. Its **probability distribution** describes how likely each value is.
+A **random variable** $X$ maps outcomes of a random process to numbers. Its **probability distribution** describes how likely each value is.
 
-- **Discrete**: `P(X = x)` — e.g. a fair die: `P(X=1) = P(X=2) = ... = 1/6`
-- **Continuous**: described by a **probability density function** (PDF) `p(x)`, where `P(a ≤ X ≤ b) = ∫ p(x) dx`
+- **Discrete**: $P(X = x)$ — e.g. a fair die: $P(X=1) = P(X=2) = \cdots = \tfrac{1}{6}$
+- **Continuous**: described by a **probability density function** (PDF) $p(x)$, where $P(a \le X \le b) = \int_a^b p(x)\,dx$
 
 Key distributions in ML:
-- **Gaussian** `N(μ, σ²)` — central limit theorem, weight initialization, Gaussian noise
+- **Gaussian** $\mathcal{N}(\mu, \sigma^2)$ — central limit theorem, weight initialization, Gaussian noise
 - **Bernoulli** — single binary outcome; backbone of logistic regression
 - **Categorical** — softmax output; multinomial generalization of Bernoulli
 - **Uniform** — used in sampling, dropout masks
 
 ## Expectation and Variance
 
-The **expectation** `E[X]` is the probability-weighted average: `E[X] = Σ x·P(X=x)` (discrete) or `∫ x·p(x) dx` (continuous).
+The **expectation** $\mathbb{E}[X]$ is the probability-weighted average:
 
-The **variance** measures spread: `Var(X) = E[(X - E[X])²] = E[X²] - E[X]²`.
+$$\mathbb{E}[X] = \sum_x x \cdot P(X=x) \quad \text{(discrete)} \qquad \mathbb{E}[X] = \int x\,p(x)\,dx \quad \text{(continuous)}$$
+
+The **variance** measures spread: $\operatorname{Var}(X) = \mathbb{E}[(X - \mathbb{E}[X])^2] = \mathbb{E}[X^2] - \mathbb{E}[X]^2$.
 
 Both appear everywhere in ML: loss functions are expectations over data distributions, and regularization controls variance of model outputs.
 
 ## Joint, Conditional, and Marginal Probability
 
-Given two variables X and Y:
-- **Joint**: `P(X, Y)` — probability of both together
-- **Marginal**: `P(X) = Σ_y P(X, Y=y)` — sum out the other variable
-- **Conditional**: `P(X | Y) = P(X, Y) / P(Y)` — probability of X given Y is known
+Given two variables $X$ and $Y$:
+- **Joint**: $P(X, Y)$ — probability of both together
+- **Marginal**: $P(X) = \sum_y P(X, Y=y)$ — sum out the other variable
+- **Conditional**: $P(X \mid Y) = \frac{P(X, Y)}{P(Y)}$ — probability of $X$ given $Y$ is known
 
-**Independence**: X and Y are independent iff `P(X, Y) = P(X)·P(Y)`. This assumption underlies Naive Bayes.
+**Independence**: $X$ and $Y$ are independent iff $P(X, Y) = P(X)\cdot P(Y)$. This assumption underlies Naive Bayes.
 
 ## Bayes Theorem
 
 The most important equation in probabilistic ML:
 
-`P(θ | data) = P(data | θ) · P(θ) / P(data)`
+$$P(\theta \mid \text{data}) = \frac{P(\text{data} \mid \theta) \cdot P(\theta)}{P(\text{data})}$$
 
-- **Prior** `P(θ)` — belief about parameters before seeing data
-- **Likelihood** `P(data | θ)` — how probable the data is under parameters θ
-- **Posterior** `P(θ | data)` — updated belief after seeing data
-- **Evidence** `P(data)` — normalizing constant (often intractable)
+- **Prior** $P(\theta)$ — belief about parameters before seeing data
+- **Likelihood** $P(\text{data} \mid \theta)$ — how probable the data is under parameters $\theta$
+- **Posterior** $P(\theta \mid \text{data})$ — updated belief after seeing data
+- **Evidence** $P(\text{data})$ — normalizing constant (often intractable)
 
 ## MLE vs MAP
 
-**Maximum Likelihood Estimation (MLE)**: find θ that maximizes `P(data | θ)`. Ignores the prior. Equivalent to minimizing cross-entropy loss in classification.
+**Maximum Likelihood Estimation (MLE)**: find $\theta$ that maximizes $P(\text{data} \mid \theta)$. Ignores the prior. Equivalent to minimizing cross-entropy loss in classification.
 
-**Maximum A Posteriori (MAP)**: find θ that maximizes `P(θ | data) ∝ P(data | θ)·P(θ)`. Incorporates the prior. With a Gaussian prior, MAP is equivalent to L2 regularization (weight decay).
+**Maximum A Posteriori (MAP)**: find $\theta$ that maximizes $P(\theta \mid \text{data}) \propto P(\text{data} \mid \theta)\cdot P(\theta)$. Incorporates the prior. With a Gaussian prior, MAP is equivalent to L2 regularization (weight decay).
 
 <NeuronDiagram animate />
 
@@ -86,7 +88,7 @@ posterior /= posterior.sum()           # normalize
 
 map_estimate = p_grid[np.argmax(posterior)]
 mle_estimate = heads / trials
-print(f"\\nAfter 7 heads / 10 flips:")
+print(f"\nAfter 7 heads / 10 flips:")
 print(f"  MLE estimate: {mle_estimate:.3f}")
 print(f"  MAP estimate: {map_estimate:.3f}")
 ```

@@ -14,26 +14,26 @@ Machine learning is linear algebra under the hood. Every neural network layer is
 A vector is an ordered list of numbers. In ML, vectors represent everything — a 768-dimensional word embedding, a pixel row, a user's preference profile.
 
 Key operations:
-- **Dot product**: `a · b = Σ aᵢbᵢ` — measures alignment/similarity
-- **Norm**: `||a|| = √(a · a)` — measures length
-- **Cosine similarity**: `cos(θ) = (a · b) / (||a|| · ||b||)` — angle between vectors, used everywhere in NLP
+- **Dot product**: $\mathbf{a} \cdot \mathbf{b} = \sum_i a_i b_i$ — measures alignment/similarity
+- **Norm**: $\|\mathbf{a}\| = \sqrt{\mathbf{a} \cdot \mathbf{a}}$ — measures length
+- **Cosine similarity**: $\cos(\theta) = \frac{\mathbf{a} \cdot \mathbf{b}}{\|\mathbf{a}\|\,\|\mathbf{b}\|}$ — angle between vectors, used everywhere in NLP
 
 ## Matrices
 
 A matrix is a rectangular grid of numbers. In ML, matrices represent:
-- Weight matrices in neural layers (`W ∈ ℝ^{m×n}`)
+- Weight matrices in neural layers ($W \in \mathbb{R}^{m \times n}$)
 - Datasets (each row = one sample)
 - Transformations (rotating, scaling, projecting data)
 
-**Matrix multiplication** `C = A @ B` combines transformations. If A is `(m×k)` and B is `(k×n)`, then C is `(m×n)`. This is the single most-executed operation in deep learning.
+**Matrix multiplication** $C = A \cdot B$ combines transformations. If $A$ is $(m \times k)$ and $B$ is $(k \times n)$, then $C$ is $(m \times n)$. This is the single most-executed operation in deep learning.
 
 ## Eigenvalues and Eigenvectors
 
-For a square matrix A, if `Av = λv`, then v is an **eigenvector** and λ is its **eigenvalue**. Eigenvectors are directions the matrix only stretches (not rotates). They appear in PCA, spectral methods, and understanding gradient dynamics.
+For a square matrix $A$, if $Av = \lambda v$, then $v$ is an **eigenvector** and $\lambda$ is its **eigenvalue**. Eigenvectors are directions the matrix only stretches (not rotates). They appear in PCA, spectral methods, and understanding gradient dynamics.
 
 ## Singular Value Decomposition (SVD)
 
-Any matrix `A = UΣVᵀ`. SVD decomposes a transformation into: rotate (U) → stretch (Σ) → rotate (Vᵀ). Used in dimensionality reduction, recommender systems, and analyzing weight matrices.
+Any matrix $A = U \Sigma V^\top$. SVD decomposes a transformation into: rotate ($U$) → stretch ($\Sigma$) → rotate ($V^\top$). Used in dimensionality reduction, recommender systems, and analyzing weight matrices.
 
 <NeuronDiagram animate />
 
